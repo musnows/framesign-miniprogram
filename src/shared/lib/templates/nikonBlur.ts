@@ -1,0 +1,167 @@
+import type { TemplateConfig } from './types'
+
+/**
+ * 尼康专用背景模糊模板
+ * 尼康 Z 系列相机专用，支持四色 Nikkor Z 标识
+ */
+export const nikonBlur: TemplateConfig = {
+  id: 'nikonBlur',
+  name: 'Z系列专版',
+  description: '尼康 Z 系列专用，Z 标识默认白色，可选红、黑、黄，支持调节背景暗角',
+  preview: '/templates/nikon_blur.jpg',
+
+  processors: [
+    {
+      processor_name: 'rounded_corner',
+      border_radius: 0.02  // vh(2)
+    },
+    {
+      processor_name: 'shadow',
+      shadow_radius: 0.015,
+      shadow_color: 'black'
+    },
+    {
+      processor_name: 'multi_rich_text',
+      text_segments: [
+        {
+          text: '{{Model|partition("Z")[0]}}',  // Z 之前的部分
+          color: 'white',
+          is_bold: true,
+          trim: true
+        },
+        {
+          image: '/logos/Nikkor-ZZ.svg',
+          image_scale: 1,  // 只缩放 Z 标识：0.8 缩小 20%，1.2 放大 20%；不改变型号文字和占位
+          image_scale_key: 'nikonZScale',
+          color: '#FFFFFF',
+          color_key: 'nikonZColor'
+        },
+        {
+          text: '{{Model|partition("Z")[2]|replace("_", "")}}',  // Z 之后的部分
+          color: 'white',
+          is_bold: true,
+          trim: true
+        }
+      ],
+      trim: true,
+      trim_ink_x: true,
+      text_spacing: 0.005,  // min(vh(2), vw(2))
+      height: 0.04  // vh(4)
+    },
+    {
+      processor_name: 'rich_text',
+      auto_params: true,  // 自动构建拍摄参数文本
+      showFocalLength: true,
+      showAperture: true,
+      showShutter: true,
+      showISO: true,
+      showDateTime: false,
+      showLens: false,
+      height: 0.03,  // vh(3)
+      trim: true,
+      color: 'white'
+    },
+    {
+      processor_name: 'concat',
+      alignment: 'center',
+      pixel_align: true,
+      spacing: 0.03,  // vh(3)
+      direction: 'vertical',
+      select: [1, 2]  // 选择两个文字层
+    },
+    {
+      processor_name: 'blur',
+      blur_radius: 0.05,
+      vignette_strength: 0.3,
+      target_index: 0
+    },
+    // 5. 放大模糊背景
+    {
+      processor_name: 'resize',
+      scale: 1.15,
+      target_index: 4
+    },
+    // 6. 原图稍微缩小
+    {
+      processor_name: 'resize',
+      scale: 0.88,
+      scale_from_margin: {
+        key: 'imageMargin',
+        default_margin: 0.12,
+        min_margin: 0.04,
+        max_margin: 0.22
+      },
+      target_index: 0
+    },
+    // 7. 将原图叠加到模糊背景上
+    {
+      processor_name: 'alignment',
+      horizontal_alignment: 'center',
+      vertical_alignment: 'center',
+      weights: [0, -5],
+      weights_from_margin: {
+        key: 'imageMargin',
+        default_margin: 0.12,
+        min_margin: 0.04,
+        max_margin: 0.22,
+        default_weights: [0, -5]
+      },
+      select: [4, 0]  // 模糊背景 + 原图
+    },
+    // 8. 将文字叠加在底部
+    {
+      processor_name: 'alignment',
+      pixel_align: true,
+      horizontal_alignment: 'center',
+      vertical_alignment: 'bottom',
+      weights: [0, -8],
+      weights_from_margin: {
+        key: 'imageMargin',
+        default_margin: 0.12,
+        min_margin: 0.04,
+        max_margin: 0.22,
+        default_weights: [0, -8]
+      },
+      select: [5, 3]  // 前一步的合并图 + 文字
+    }
+  ],
+
+  userOptions: {
+    nikonZ: {
+      scale: 1
+    },
+    colors: {
+      nikonZColor: '#FFFFFF'
+    },
+    exifFields: {
+      showLens: false,
+      showFocalLength: true,
+      showAperture: true,
+      showShutter: true,
+      showISO: true,
+      showDateTime: false
+    },
+    logo: {
+      enabled: false
+    },
+    border: {
+      borderRadius: 0.02
+    },
+    shadow: {
+      shadowEnabled: true,
+      shadowColor: 'black',
+      shadowRadius: 0.015
+    },
+    layout: {
+      imageMargin: 0.12
+    },
+    blur: {
+      blurRadius: 0.05,
+      vignetteEnabled: true,
+      vignetteStrength: 0.3
+    },
+    typography: {
+      portraitScale: 0.9
+    }
+  }
+}

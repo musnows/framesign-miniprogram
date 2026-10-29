@@ -1,0 +1,40 @@
+{
+  "name": "framesign-miniprogram",
+  "version": "1.0.4",
+  "description": "FrameSign (映签): a local-first WeChat mini-program for photo signatures and watermarks.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/musnows/framesign-miniprogram.git"
+  },
+  "contributors": [
+    {
+      "name": "musnows"
+    },
+    {
+      "name": "Leoonliang",
+      "url": "https://github.com/LeoonLiang"
+    }
+  ],
+  "scripts": {
+    "build": "node scripts/build-miniprogram.mjs",
+    "dev": "node scripts/start-miniprogram.mjs",
+    "test": "npm run build && node --test --test-concurrency=1 tests/miniprogram.test.mjs tests/brand-compatibility.test.cjs",
+    "test:runtime": "node scripts/start-miniprogram-tests.mjs"
+  },
+  "dependencies": {
+    "exifr": "7.1.3"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "1.0.13",
+    "@open-wxa/wxa-baselib": "0.1.0",
+    "@open-wxa/wxa-runner-core": "0.8.1",
+    "esbuild": "0.28.2",
+    "sharp": "0.35.5",
+    "wxa-runner": "0.8.1"
+  }
+}

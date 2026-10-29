@@ -1,0 +1,22 @@
+export const BUILTIN_LOGOS = [
+  { name: '尼康 Nikon', path: '/logos/nikon.png' },
+  { name: '尼康 Nikon 斜体字标', path: '/logos/nikon_italic.png' },
+  { name: '佳能 Canon', path: '/logos/canon.png' },
+  { name: '索尼 Sony 白色', path: '/logos/sony.png' },
+  { name: '索尼 Sony 黑色', path: '/logos/sony_dark.png' },
+  { name: '富士 Fujifilm', path: '/logos/fujifilm.png' },
+  { name: '奥林巴斯 Olympus 白金', path: '/logos/olympus_white_gold.png' },
+  { name: '奥林巴斯 Olympus 蓝金', path: '/logos/olympus_blue_gold.png' },
+  { name: '松下 Panasonic', path: '/logos/panasonic.png' },
+  { name: '松下 Panasonic 备选', path: '/logos/panasonic2.png' },
+  { name: '徕卡 Leica', path: '/logos/leica_logo.png' },
+  { name: '宾得 Pentax', path: '/logos/pentax.png' },
+  { name: '理光 Ricoh', path: '/logos/ricoh.png' },
+  { name: '哈苏 Hasselblad', path: '/logos/hasselblad.png' },
+  { name: '大疆 DJI', path: '/logos/DJI.png' },
+  { name: '苹果 Apple', path: '/logos/apple.png' },
+  { name: '华为 XMAGE', path: '/logos/xmage.png' },
+  { name: '尼克尔 Nikkor Z', path: '/logos/Nikkor-ZZ.svg' },
+  { name: '默认图标 PNG', path: '/logos/default.png' },
+  { name: '默认图标 SVG', path: '/logos/default.svg' }
+] as const

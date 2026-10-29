@@ -1,0 +1,126 @@
+import type { ProcessorStep } from '~/lib/processors/types'
+
+/**
+ * 模板用户可配置选项
+ */
+export interface TemplateUserOptions {
+  /** 隐藏水印 */
+  hiddenWatermark?: {
+    enabled?: boolean
+    text?: string
+  }
+
+  /** EXIF 字段显示控制 */
+  exifFields?: {
+    showBrand?: boolean
+    showModel?: boolean
+    showLens?: boolean
+    showFocalLength?: boolean
+    showAperture?: boolean
+    showShutter?: boolean
+    showISO?: boolean
+    showDateTime?: boolean
+  }
+
+  /** Logo 控制 */
+  logo?: {
+    enabled?: boolean
+    position?: 'left-top' | 'right-top' | 'left-bottom' | 'right-bottom' | 'top-center'
+  }
+
+  /** Nikon Z 标识大小 */
+  nikonZ?: {
+    scale: 0.8 | 1 | 1.2
+  }
+
+  /** 颜色控制 */
+  colors?: {
+    textColor?: string
+    secondaryTextColor?: string
+    nikonZColor?: '#FFFFFF' | '#FF0000' | '#000000' | '#FFCC00'
+  }
+
+  /** 背景色控制 */
+  background?: {
+    backgroundColor?: string
+  }
+
+  /** 版式间距控制 */
+  layout?: {
+    padding?: number
+    imageMargin?: number
+  }
+
+  /** 边框/圆角控制 */
+  border?: {
+    showBorder?: boolean
+    borderColor?: string
+    borderRadius?: number
+  }
+
+  /** 阴影控制 */
+  shadow?: {
+    shadowEnabled?: boolean
+    shadowColor?: string
+    shadowRadius?: number
+  }
+
+  /** 模糊控制 */
+  blur?: {
+    blurRadius?: number
+    vignetteEnabled?: boolean
+    vignetteStrength?: number
+  }
+
+  /** 个性文字控制 */
+  personalText?: {
+    text?: string
+    margin?: number
+    fontSize?: number
+    opacity?: number
+    position?: 'bottom-center' | 'top-center' | 'left-bottom' | 'right-bottom'
+  }
+
+  /** 文字排版控制 */
+  typography?: {
+    portraitScale?: number
+  }
+}
+
+/**
+ * 响应式处理器配置
+ * 根据图片宽高比选择不同的处理器
+ */
+export interface ResponsiveProcessors {
+  /** 横屏图（宽 > 高）*/
+  landscape: ProcessorStep[]
+  /** 竖屏图（高 > 宽）*/
+  portrait: ProcessorStep[]
+  /** 正方形图（宽 ≈ 高，可选，默认使用 portrait）*/
+  square?: ProcessorStep[]
+}
+
+/**
+ * 模板配置
+ */
+export interface TemplateConfig {
+  /** 模板 ID */
+  id: string
+
+  /** 模板名称 */
+  name: string
+
+  /** 模板描述 */
+  description: string
+
+  /** 预览图 URL */
+  preview?: string
+
+  /** 处理器步骤配置（完整配置）
+   * 可以是固定配置或响应式配置
+   */
+  processors: ProcessorStep[] | ResponsiveProcessors
+
+  /** 用户可调整的参数 */
+  userOptions: TemplateUserOptions
+}

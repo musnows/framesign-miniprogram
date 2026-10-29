@@ -1,0 +1,13 @@
+.detector { padding-top: 46rpx; }
+.detector .primary, .detector .secondary { width: 100%; }
+.detector .headline { margin: 20rpx 0 24rpx; font-size: 54rpx; }
+.subtitle { line-height: 1.85; }
+.detect-card { margin: 40rpx 0 28rpx; }
+.detect-image { width: 100%; height: 420rpx; display: block; background: #ebe8df; }
+.detect-empty { padding: 64rpx 30rpx; text-align: center; }
+.detect-empty .title { margin: 24rpx 0 8rpx; font-size: 29rpx; }
+.scan-icon { width: 92rpx; height: 82rpx; border: 3rpx solid #d5c59d; border-radius: 16rpx; margin: 0 auto; padding: 14rpx; display: flex; gap: 8rpx; align-items: center; }
+.scan-icon view { width: 10rpx; background: #b3a27b; height: 26rpx; }
+.scan-icon view:nth-child(2) { height: 46rpx; }
+.scan-icon view:nth-child(3) { height: 36rpx; }
+.marker { font-family: "SFMono-Regular", Menlo, Consolas, monospace; word-break: break-all; padding: 26rpx; margin: 22rpx 0; border-radius: 18rpx; background: #f8f3e7; color: #8c691e; font-size: 32rpx; }

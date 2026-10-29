@@ -1,0 +1,259 @@
+/**
+ * Canvas 工具函数
+ */
+
+export interface CanvasPlatform {
+  createCanvas: (width: number, height: number) => HTMLCanvasElement
+  loadImage: (src: string) => Promise<HTMLImageElement>
+  loadFont: (font: string) => Promise<unknown>
+  drawBlurred: (ctx: CanvasRenderingContext2D, source: HTMLCanvasElement, x: number, y: number, radius: number) => void
+}
+
+let canvasPlatform: CanvasPlatform | undefined
+
+export function configureCanvasPlatform(platform?: CanvasPlatform) {
+  canvasPlatform = platform
+}
+
+export function loadCanvasFont(font: string): Promise<unknown> {
+  if (canvasPlatform) return canvasPlatform.loadFont(font)
+  return typeof document !== 'undefined' && document.fonts ? document.fonts.load(font) : Promise.resolve()
+}
+
+export function drawBlurredCanvas(ctx: CanvasRenderingContext2D, source: HTMLCanvasElement, x: number, y: number, radius: number) {
+  if (canvasPlatform) return canvasPlatform.drawBlurred(ctx, source, x, y, radius)
+  ctx.filter = `blur(${radius}px)`
+  ctx.drawImage(source, x, y)
+  ctx.filter = 'none'
+}
+
+/**
+ * 创建 Canvas 元素
+ */
+export function createCanvas(width: number, height: number): HTMLCanvasElement {
+  if (canvasPlatform) return canvasPlatform.createCanvas(width, height)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  return canvas
+}
+
+/**
+ * 从 File 加载图片到 Canvas
+ */
+export async function loadImageToCanvas(file: File): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+
+    img.onload = () => {
+      const canvas = createCanvas(img.width, img.height)
+      const ctx = canvas.getContext('2d')
+
+      if (!ctx) {
+        reject(new Error('Cannot get 2d context'))
+        return
+      }
+
+      ctx.drawImage(img, 0, 0)
+      URL.revokeObjectURL(url)
+      resolve(canvas)
+    }
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Failed to load image'))
+    }
+
+    img.src = url
+  })
+}
+
+/**
+ * 将 Canvas 转换为 Blob
+ * 使用高质量JPEG以确保Windows缩略图正常显示
+ */
+export function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type: string = 'image/jpeg',
+  quality: number = 0.98
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob)
+        } else {
+          reject(new Error('Canvas to Blob conversion failed'))
+        }
+      },
+      type,
+      quality
+    )
+  })
+}
+
+/**
+ * 绘制文字
+ */
+export interface DrawTextOptions {
+  text: string
+  x: number
+  y: number
+  align?: CanvasTextAlign
+  baseline?: CanvasTextBaseline
+  color?: string
+  fontSize?: number
+  fontWeight?: string | number
+  fontFamily?: string
+  maxWidth?: number
+}
+
+export function drawText(ctx: CanvasRenderingContext2D, options: DrawTextOptions) {
+  const {
+    text,
+    x,
+    y,
+    align = 'left',
+    baseline = 'middle',
+    color = '#000000',
+    fontSize = 16,
+    fontWeight = 'normal',
+    fontFamily = 'Arial, sans-serif'
+  } = options
+
+  ctx.save()
+  ctx.fillStyle = color
+  ctx.textAlign = align
+  ctx.textBaseline = baseline
+  ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`
+  ctx.fillText(text, x, y, options.maxWidth)
+  ctx.restore()
+}
+
+/**
+ * 加载图片
+ */
+export function loadImage(src: string): Promise<HTMLImageElement> {
+  if (canvasPlatform) return canvasPlatform.loadImage(src)
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = reject
+    img.src = src
+  })
+}
+
+/**
+ * 绘制 Logo
+ */
+export interface DrawLogoOptions {
+  logoPath: string
+  x: number
+  y: number
+  size: number
+}
+
+export async function drawLogo(
+  ctx: CanvasRenderingContext2D,
+  options: DrawLogoOptions
+): Promise<void> {
+  const { logoPath, x, y, size } = options
+
+  try {
+    const logo = await loadImage(logoPath)
+    const aspectRatio = logo.width / logo.height
+    const width = size * aspectRatio
+    const height = size
+
+    ctx.save()
+    ctx.drawImage(logo, x - width / 2, y - height / 2, width, height)
+    ctx.restore()
+  } catch (error) {
+    console.error('Failed to load logo:', error)
+  }
+}
+
+/**
+ * 解析颜色为 RGBA 字符串
+ */
+export function parseColor(color: string | number[]): string {
+  if (Array.isArray(color)) {
+    if (color.length === 3) {
+      return `rgb(${color[0]}, ${color[1]}, ${color[2]})`
+    } else if (color.length === 4) {
+      return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})`
+    }
+  }
+
+  // 支持字符串元组格式 "(r,g,b)" 或 "(r,g,b,a)"
+  if (typeof color === 'string') {
+    const tupleMatch = color.match(/^\((\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d+))?\)$/)
+    if (tupleMatch) {
+      const [, r, g, b, a] = tupleMatch
+      if (a !== undefined) {
+        return `rgba(${r}, ${g}, ${b}, ${parseInt(a) / 255})`
+      }
+      return `rgb(${r}, ${g}, ${b})`
+    }
+  }
+
+  return color as string
+}
+
+/**
+ * 绘制圆角矩形
+ */
+export interface DrawRoundedRectOptions {
+  x: number
+  y: number
+  width: number
+  height: number
+  radius: number
+  fillColor?: string
+  strokeColor?: string
+  strokeWidth?: number
+}
+
+export function drawRoundedRect(ctx: CanvasRenderingContext2D, options: DrawRoundedRectOptions) {
+  const {
+    x,
+    y,
+    width,
+    height,
+    radius,
+    fillColor,
+    strokeColor,
+    strokeWidth = 1
+  } = options
+
+  ctx.save()
+  ctx.beginPath()
+
+  // 绘制圆角矩形路径
+  ctx.moveTo(x + radius, y)
+  ctx.lineTo(x + width - radius, y)
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius)
+  ctx.lineTo(x + width, y + height - radius)
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
+  ctx.lineTo(x + radius, y + height)
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius)
+  ctx.lineTo(x, y + radius)
+  ctx.quadraticCurveTo(x, y, x + radius, y)
+  ctx.closePath()
+
+  // 填充
+  if (fillColor) {
+    ctx.fillStyle = parseColor(fillColor)
+    ctx.fill()
+  }
+
+  // 描边
+  if (strokeColor) {
+    ctx.strokeStyle = parseColor(strokeColor)
+    ctx.lineWidth = strokeWidth
+    ctx.stroke()
+  }
+
+  ctx.restore()
+}

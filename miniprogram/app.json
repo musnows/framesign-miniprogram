@@ -1,0 +1,13 @@
+{
+  "pages": ["pages/home/index", "pages/editor/index", "pages/detect/index"],
+  "window": {
+    "navigationBarTitleText": "映签",
+    "navigationBarBackgroundColor": "#faf9f6",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#faf9f6"
+  },
+  "style": "v2",
+  "workers": "workers",
+  "lazyCodeLoading": "requiredComponents",
+  "sitemapLocation": "sitemap.json"
+}

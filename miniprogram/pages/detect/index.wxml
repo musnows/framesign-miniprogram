@@ -1,0 +1,17 @@
+<view class="page detector">
+  <text class="eyebrow mono">LOOK BEYOND THE IMAGE</text>
+  <view class="headline">找到照片里的<view class="accent">专属标识。</view></view>
+  <view class="subtitle">读取由 映签 写入的隐藏水印，<view>兼容项目现有的 V1、V2、V3 格式。</view></view>
+  <view class="detect-card card">
+    <image wx:if="{{path}}" class="detect-image" src="{{path}}" mode="aspectFit" bindtap="preview" />
+    <view wx:else class="detect-empty"><view class="scan-icon"><view></view><view></view><view></view></view><view class="title">选择一张照片</view><view class="hint">建议使用未经压缩的导出原图</view></view>
+  </view>
+  <button id="choose-detect" class="primary" loading="{{busy}}" disabled="{{busy}}" bindtap="choosePhoto">{{busy ? '正在读取像素中的标识…' : path ? '换一张照片检测' : '选择照片并检测'}}</button>
+  <view wx:if="{{error}}" id="detect-error" class="error section">{{error}}</view>
+  <view wx:if="{{checked}}" id="detect-result" class="card card-body section">
+    <block wx:if="{{result}}"><view class="row"><text class="title">检测到隐藏水印</text><text class="badge mono">V{{result.version}}</text></view><view id="detected-marker" class="marker" selectable>{{result.marker}}</view><button class="secondary" bindtap="copyMarker">复制标识</button></block>
+    <block wx:else><view class="title">未检测到可恢复的标识</view><view class="hint">照片可能未写入隐藏水印，或经过压缩、缩放等处理。本结果不能作为作品归属的证明。</view></block>
+  </view>
+  <view class="notice section">检测过程完全在本地进行。图片越大，检测耗时越长，请保持页面打开。</view>
+  <view class="footer"><view>映签 · <text class="mono">v{{appVersion}}</text></view><view class="footer-caption">照片无需上传</view></view>
+</view>

@@ -1,0 +1,14 @@
+{
+  "appid": "touristappid",
+  "projectname": "映签",
+  "compileType": "miniprogram",
+  "miniprogramRoot": "./",
+  "libVersion": "3.7.0",
+  "setting": {
+    "es6": true,
+    "minified": true,
+    "postcss": true,
+    "urlCheck": true,
+    "enhance": true
+  }
+}
