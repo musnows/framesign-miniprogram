@@ -7,9 +7,10 @@
     <view wx:else class="detect-empty"><view class="scan-icon"><view></view><view></view><view></view></view><view class="title">选择一张照片</view><view class="hint">建议使用未经压缩的导出原图</view></view>
   </view>
   <button id="choose-detect" class="primary" loading="{{busy}}" disabled="{{busy}}" bindtap="choosePhoto">{{busy ? '正在读取像素中的标识…' : path ? '换一张照片检测' : '选择照片并检测'}}</button>
+  <button class="link section" data-source="message" disabled="{{busy}}" bindtap="choosePhoto">从聊天文件选择图片</button><button wx:if="{{path && !busy}}" class="secondary section" bindtap="retry">重新检测</button><button wx:if="{{busy}}" class="secondary section" bindtap="cancel">停止检测</button><view wx:if="{{dimensions}}" class="hint section mono">{{dimensions}}</view>
   <view wx:if="{{error}}" id="detect-error" class="error section">{{error}}</view>
   <view wx:if="{{checked}}" id="detect-result" class="card card-body section">
-    <block wx:if="{{result}}"><view class="row"><text class="title">检测到隐藏水印</text><text class="badge mono">V{{result.version}}</text></view><view id="detected-marker" class="marker" selectable>{{result.marker}}</view><button class="secondary" bindtap="copyMarker">复制标识</button></block>
+    <block wx:if="{{result}}"><view class="row"><text class="title">检测到隐藏水印</text><text class="badge mono">V{{result.version}}</text></view><view id="detected-marker" class="marker" selectable>{{result.marker}}</view><view class="row hint"><text>信号置信度 {{confidence}}</text><text>分析区块 {{blockCount}}</text></view><button class="secondary" bindtap="copyMarker">复制标识</button></block>
     <block wx:else><view class="title">未检测到可恢复的标识</view><view class="hint">照片可能未写入隐藏水印，或经过压缩、缩放等处理。本结果不能作为作品归属的证明。</view></block>
   </view>
   <view class="notice section">检测过程完全在本地进行。图片越大，检测耗时越长，请保持页面打开。</view>

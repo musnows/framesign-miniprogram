@@ -9,6 +9,7 @@ import { createCanvas, Image } from '@napi-rs/canvas'
 import { build } from 'esbuild'
 import sharp from 'sharp'
 import exifr from 'exifr'
+import JSZip from 'jszip'
 import { metadataFixture } from './metadata-fixture.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -48,9 +49,9 @@ const wx = {
     return canvas
   },
   getFileSystemManager: () => fsApi,
-  canvasToTempFilePath({ canvas, fileType, success, fail }) {
+  canvasToTempFilePath({ canvas, fileType, quality, success, fail }) {
     const tempFilePath = path.join(artifacts, `render-${++serial}.${fileType}`)
-    canvas.encode(fileType === 'jpg' ? 'jpeg' : 'png').then(bytes => writeFile(tempFilePath, bytes)).then(() => success({ tempFilePath }), fail)
+    canvas.encode(fileType === 'jpg' ? 'jpeg' : 'png', fileType === 'jpg' ? Math.round(quality * 100) : undefined).then(bytes => writeFile(tempFilePath, bytes)).then(() => success({ tempFilePath }), fail)
   },
   chooseMedia({ success }) { success({ tempFiles: chosen }) },
   chooseMessageFile({ success }) { success({ tempFiles: chosen }) },
@@ -134,7 +135,7 @@ test('hidden watermark survives exported PNG and detects the shared project mark
   const photo = core.createDemo(4, 'standard1')
   photo.config.hiddenWatermarkEnabled = true
   photo.config.hiddenWatermarkText = '映签 样片 42'
-  const result = await core.exportPhoto(photo, target, { format: 'jpg', maxSide: 1280, preserveExif: false })
+  const result = await core.exportPhoto(photo, target, { format: 'png', maxSide: 1280, preserveExif: false })
   assert.equal(result.format, 'png')
   const detection = await core.detectPhoto(result.path)
   assert.equal(detection.marker, photo.config.hiddenWatermarkText)
@@ -356,4 +357,66 @@ test('custom logo import persists an independent local image without changing th
   assert.match(logo, /yingqian-logo-\d+-\d+\.png$/)
   assert.deepEqual([(await sharp(logo).metadata()).width, (await sharp(logo).metadata()).height], [1080, 720])
   assert.equal(createHash('sha256').update(await readFile(sample)).digest('hex'), originalHash)
+})
+
+test('original-size export preserves pixels above the previous resolution cap and rejects oversize input explicitly', async () => {
+  const photo = { ...core.createDemo(91, 'noProcess'), path: path.join(artifacts, 'large-original.jpg'), width: 3000, height: 2000 }
+  await sharp(sample).resize(3000, 2000).toFile(photo.path)
+  const original = await core.exportPhoto(photo, target, { preserveExif: false })
+  assert.deepEqual([original.width, original.height], [3000, 2000])
+  assert.equal(original.format, 'jpg')
+  const reduced = await core.exportPhoto(photo, target, { maxSide: 1280, preserveExif: false })
+  assert.equal(reduced.width, 1280)
+  await assert.rejects(core.exportPhoto({ ...photo, width: 6000, height: 4000 }, target, { preserveExif: false }), /原尺寸/)
+})
+
+test('file export creates a valid ZIP with distinct duplicate names, matching formats and preserved metadata', async () => {
+  const source = path.join(artifacts, 'archive-exif.jpg')
+  await writeFile(source, metadataFixture(await readFile(sample)))
+  const photos = [1, 2].map(id => ({ ...core.createDemo(id), path: source, name: 'same-name.jpg', isDemo: false }))
+  const result = await core.exportFiles(photos, target, { format: 'png', maxSide: 1280, preserveExif: true })
+  const zip = await JSZip.loadAsync(await readFile(result.path), { checkCRC32: true })
+  assert.deepEqual(Object.keys(zip.files), ['same-name.png', 'same-name (2).png'])
+  for (const entry of Object.values(zip.files)) {
+    const bytes = await entry.async('nodebuffer')
+    assert.equal((await sharp(bytes).metadata()).format, 'png')
+    assert.equal((await exifr.parse(bytes)).Model, 'NIKON Zf')
+  }
+  const single = await core.exportFiles([photos[0]], target, { format: 'jpg', preserveExif: false })
+  assert.equal(single.fileName, 'same-name.jpg')
+  assert.equal(single.count, 1)
+  await assert.rejects(core.exportFiles(photos, target, {}, () => {}, () => true), /停止/)
+})
+
+test('batch export skips untouched originals but includes signature-only and watermark-only images', async () => {
+  const original = core.createDemo(10, 'noProcess')
+  assert.equal(core.isPhotoProcessed(original), false)
+  assert.equal(core.isPhotoProcessed({ ...original, config: { ...original.config, signature: { ...core.DEFAULT_SIGNATURE, dataUrl: 'signature.png' } } }), true)
+  assert.equal(core.isPhotoProcessed({ ...original, config: { ...original.config, hiddenWatermarkEnabled: true, hiddenWatermarkText: 'owner' } }), true)
+  let exports = 0
+  const { page } = await pageHarness({ exportPhoto: async () => { exports++; return { path: sample } } })
+  page.photos.push(original)
+  await page.savePhotos({ currentTarget: { dataset: { all: true } } })
+  assert.equal(exports, 2)
+  assert.match(page.data.notice, /跳过 1 张/)
+  page.onUnload()
+})
+
+test('JPEG remains an explicit export choice with hidden-watermark metadata', async () => {
+  const photo = core.createDemo(92)
+  photo.config.hiddenWatermarkEnabled = true
+  photo.config.hiddenWatermarkText = 'jpeg parity'
+  const result = await core.exportPhoto(photo, target, { format: 'jpg', preserveExif: false })
+  assert.equal(result.format, 'jpg')
+  assert.equal((await sharp(result.path).metadata()).format, 'jpeg')
+  const detected = await core.detectPhoto(result.path)
+  assert.equal(detected.marker, photo.config.hiddenWatermarkText)
+})
+
+test('small photographs are not blocked by a mini-program-only hidden-watermark size restriction', async () => {
+  const photo = { ...core.createDemo(93, 'noProcess'), path: path.join(artifacts, 'small-hidden.jpg'), width: 300, height: 300 }
+  await sharp(sample).resize(300, 300).toFile(photo.path)
+  Object.assign(photo.config, { hiddenWatermarkEnabled: true, hiddenWatermarkText: 'small image' })
+  const exported = await core.exportPhoto(photo, target, { format: 'png', preserveExif: false })
+  assert.deepEqual([exported.width, exported.height], [300, 300])
 })

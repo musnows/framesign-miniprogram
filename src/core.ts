@@ -1,10 +1,11 @@
 import exifr from 'exifr'
+import JSZip from 'jszip'
 import * as templateDefinitions from './shared/lib/templates'
 import { getTemplateDefaultConfig } from './shared/lib/templates/userOptions'
 import { initProcessors, getProcessor } from './shared/lib/processors'
 import { createCanvas, loadImage } from './shared/utils/canvas'
 import { prepareSignature, finishSignature } from './shared/utils/signature'
-import { DEFAULT_SIGNATURE, getDefaultSignatureAnchor } from './shared/lib/editor/signature'
+import { DEFAULT_SIGNATURE, getDefaultSignatureAnchor, hasSignature } from './shared/lib/editor/signature'
 import { normalizeParsedExif, EDITABLE_EXIF_FIELDS, DATE_TIME_FORMAT_OPTIONS } from './shared/lib/editor/exif'
 import { preserveExportExif, extractExif, normalizeExif } from './shared/lib/editor/exportExif'
 import { filterPhotographyExif } from './shared/lib/editor/photographyExif'
@@ -23,7 +24,7 @@ export { readPhotoMetadata, metadataPage } from './metadata'
 export { photoBrand, withBrandLogos, brandGroups, applyPhotoStyle } from './photo-selection'
 export const templates = ['noProcess', 'standard1', 'standard2', 'logoCentered', 'blurBackground', 'nikonBlur', 'folderNameParams', 'centeredWatermark', 'sidebarWatermark', 'centeredWatermark2', 'personalText'].map(key => (templateDefinitions as any)[key])
 export const logos = BUILTIN_LOGOS.map(logo => ({ ...logo, path: logo.path.replace(/\.svg$/, '.png') })).filter((logo, index, list) => list.findIndex(item => item.path === logo.path) === index)
-export const defaultExport = { maxSide: 2048, format: 'jpg', preserveExif: true, photographyOnly: false }
+export const defaultExport = { maxSide: 0, format: 'jpg', preserveExif: true, photographyOnly: false }
 export const demoExif = { Make: 'NIKON', Model: 'NIKON Z 6_2', LensModel: 'NIKKOR Z 24-200mm f/4-6.3 VR', FocalLength: '67mm', FNumber: 'f/6.3', ExposureTime: '1/200s', ISO: 'ISO 360', DateTimeOriginal: '2023-06-16 07:15:00' }
 let initialized = false
 let operation = Promise.resolve()
@@ -101,7 +102,7 @@ export async function importPhotos(templateId = 'noProcess', remaining = 9, sour
       let metadataWarning = ''
       try { rawExif = await exifr.parse(bytes, { mergeOutput: true, translateValues: true, reviveValues: true }) || {} }
       catch { metadataWarning = '未能读取 EXIF，可以手动补充。' }
-      photos.push({ path: file.tempFilePath, name: file.name || file.tempFilePath.split('/').pop(), type: info.type || '', size: bytes.length, width: info.width, height: info.height, exif: normalizeParsedExif(rawExif), rawExif, overrides: {}, templateId, config: defaults(templateId), metadataWarning })
+      photos.push({ path: file.tempFilePath, name: file.name || file.tempFilePath.split('/').pop(), type: info.type ? 'image/' + (info.type === 'jpg' ? 'jpeg' : info.type) : '', size: bytes.length, width: info.width, height: info.height, exif: normalizeParsedExif(rawExif), rawExif, overrides: {}, templateId, config: defaults(templateId), metadataWarning })
     } catch (error: any) { failures.push(error.message || error.errMsg || '图片无法读取') }
   }
   return { photos, failures }
@@ -118,7 +119,7 @@ async function render(photo: any, maxSide: number, hidden = false) {
   const config = { ...defaults(photo.templateId), ...photo.config }
   if (hidden) validateConfig(config)
   const image = await loadImage(photo.path)
-  const dimensions = fitDimensions(image.width, image.height, maxSide)
+  const dimensions = maxSide === 0 ? { width: image.width, height: image.height } : fitDimensions(image.width, image.height, maxSide, 16000000)
   const source = createCanvas(dimensions.width, dimensions.height)
   source.getContext('2d')!.drawImage(image, 0, 0, source.width, source.height)
   const steps = stepsFor(photo, source.width, source.height)
@@ -133,14 +134,13 @@ async function render(photo: any, maxSide: number, hidden = false) {
     releaseCanvases([source, ...context.buffer, ...(context.signature ? [context.signature.image] : [])])
   }
   let output = finishSignature(context.buffer[context.buffer.length - 1] || source, context.signature)
-  const finalDimensions = fitDimensions(output.width, output.height, maxSide)
+  const finalDimensions = maxSide === 0 ? { width: output.width, height: output.height, resized: false } : fitDimensions(output.width, output.height, maxSide, 16000000)
   if (finalDimensions.resized) {
     const resized = createCanvas(finalDimensions.width, finalDimensions.height)
     resized.getContext('2d')!.drawImage(output, 0, 0, resized.width, resized.height)
     output = resized
   }
   if (hidden && config.hiddenWatermarkEnabled) {
-    if (output.width < 448 || output.height < 448) throw new Error('隐藏水印需要宽、高均至少 448 像素的照片。')
     const ctx = output.getContext('2d')!
     const pixels = ctx.getImageData(0, 0, output.width, output.height)
     const embedded = await processWatermark('embed', pixels.data, output.width, output.height, config.hiddenWatermarkText.trim())
@@ -157,7 +157,7 @@ async function canvasFile(source: HTMLCanvasElement, target: HTMLCanvasElement, 
   ctx.clearRect(0, 0, target.width, target.height)
   if (format === 'jpg') { ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, target.width, target.height) }
   ctx.drawImage(source, 0, 0)
-  const result = await api('canvasToTempFilePath', { canvas: target, x: 0, y: 0, width: target.width, height: target.height, destWidth: target.width, destHeight: target.height, fileType: format, quality: 1 })
+  const result = await api('canvasToTempFilePath', { canvas: target, x: 0, y: 0, width: target.width, height: target.height, destWidth: target.width, destHeight: target.height, fileType: format, quality: 0.98 })
   return result.tempFilePath as string
 }
 
@@ -188,10 +188,11 @@ export async function preserveMetadata(output: Uint8Array, source: Uint8Array, o
 export function exportPhoto(photo: any, canvas: HTMLCanvasElement, settings: any = defaultExport) {
   const snapshot = JSON.parse(JSON.stringify(photo))
   const options = { ...defaultExport, ...settings }
-  options.maxSide = [1280, 2048, 2560].includes(Number(options.maxSide)) ? Number(options.maxSide) : 2048
-  options.format = snapshot.config.hiddenWatermarkEnabled ? 'png' : options.format === 'png' ? 'png' : 'jpg'
+  options.maxSide = [0, 1280, 2048, 2560, 4096].includes(Number(options.maxSide)) ? Number(options.maxSide) : 0
+  options.format = options.format === 'png' ? 'png' : 'jpg'
   return exclusive(async () => {
     try {
+      if (options.maxSide === 0 && (snapshot.width * snapshot.height > 16000000 || snapshot.width > 8192 || snapshot.height > 8192)) throw new Error('原尺寸照片超出当前移动端处理范围，请在导出设置中选择较小尺寸后重试。')
       const output = await render(snapshot, options.maxSide, true)
       const width = output.width
       const height = output.height
@@ -200,9 +201,53 @@ export function exportPhoto(photo: any, canvas: HTMLCanvasElement, settings: any
         const result = await preserveMetadata(await readBytes(path), await readBytes(snapshot.path), options, width, height)
         path = await writeBytes(`${wx.env.USER_DATA_PATH}/yingqian-export.${options.format}`, result)
       }
-      return { path, width, height, format: options.format }
+      return { path, width, height, format: options.format, name: exportFileName(snapshot.name, options.format) }
+    } catch (error: any) {
+      if (/Canvas size exceeds/.test(error.message || '')) throw new Error('照片或模板成片超出当前移动端画布范围，请选择较小的导出尺寸后重试。')
+      throw error
     } finally { releaseCanvases(); canvas.width = 1; canvas.height = 1 }
   })
+}
+
+export function isPhotoProcessed(photo: any) {
+  const bytes = markerBytes(photo.config.hiddenWatermarkText || '')
+  return photo.templateId !== 'noProcess' || hasSignature(photo.config) || (photo.config.hiddenWatermarkEnabled && bytes > 0 && bytes <= 64)
+}
+
+export function exportFileName(name: string, format: string) {
+  const basename = String(name || 'photo').replace(/[\\/\u0000-\u001f:*?"<>|]/g, '_').replace(/\.[^.]*$/, '').slice(0, 120) || 'photo'
+  return `${basename}.${format === 'png' ? 'png' : 'jpg'}`
+}
+
+export async function exportFiles(photos: any[], canvas: HTMLCanvasElement, settings: any, progress: (current: number, total: number, packing?: boolean) => void = () => {}, cancelled: () => boolean = () => false) {
+  if (!photos.length) throw new Error('没有已处理的照片可以导出。')
+  const zip = new JSZip()
+  const names = new Set<string>()
+  let totalBytes = 0
+  let lastImage: any
+  for (let index = 0; index < photos.length; index++) {
+    if (cancelled()) throw new Error('已停止文件导出。')
+    progress(index, photos.length)
+    lastImage = await exportPhoto(photos[index], canvas, settings)
+    if (cancelled()) throw new Error('已停止文件导出。')
+    if (photos.length === 1) return { path: lastImage.path, fileName: lastImage.name, count: 1, lastImage }
+    const bytes = await readBytes(lastImage.path)
+    totalBytes += bytes.length
+    if (totalBytes > 96 * 1024 * 1024) throw new Error('本次文件超过 96 MB，请分批导出，或逐张保存到相册。')
+    let name = lastImage.name
+    let counter = 1
+    while (names.has(name.toLowerCase())) name = lastImage.name.replace(/\.[^.]+$/, ` (${++counter}).${lastImage.format}`)
+    names.add(name.toLowerCase())
+    zip.file(name, bytes)
+    progress(index + 1, photos.length)
+  }
+  const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } }, () => {
+    if (cancelled()) throw new Error('已停止文件导出。')
+    progress(photos.length, photos.length, true)
+  })
+  const fileName = `yingqian-${new Date().toISOString().slice(0, 10)}.zip`
+  const path = await writeBytes(`${wx.env.USER_DATA_PATH}/${fileName}`, bytes)
+  return { path, fileName, count: photos.length, lastImage }
 }
 
 export function importSignature(canvas: HTMLCanvasElement, sourceType = 'album') {
@@ -255,7 +300,7 @@ export function detectPhoto(path: string) {
     try {
       initialize()
       const image = await loadImage(path)
-      if (image.width * image.height > 8000000) throw new Error('检测支持 800 万像素以内的照片；请使用导出原图，避免再次缩放。')
+      if (image.width * image.height > 16000000 || image.width > 8192 || image.height > 8192) throw new Error('照片超出当前移动端检测范围，请使用 Web 版检测原尺寸文件，避免缩放破坏水印。')
       const canvas = createCanvas(image.width, image.height)
       const ctx = canvas.getContext('2d')!
       ctx.drawImage(image, 0, 0)

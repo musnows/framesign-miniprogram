@@ -12,7 +12,7 @@ Page({
     templates: core.templates.map(item => ({ id: item.id, name: item.name })),
     logos: [{ name: '自动识别相机品牌', path: '' }, ...core.logos],
     dateFormats, dateIndex: 0, logoIndex: 0,
-    settings: { ...core.defaultExport }, sizeLabels: ['1280 px · 轻量', '2048 px · 推荐', '2560 px · 精细'], sizeIndex: 1,
+    settings: { ...core.defaultExport }, sizeLabels: ['原始尺寸', '1280 px · 轻量', '2048 px', '2560 px', '4096 px'], sizeIndex: 0,
     formats: ['JPEG · 通用照片', 'PNG · 无损画质'], formatIndex: 0,
     signaturePositions: ['跟随模板', '自定义位置'], signatureMasks: ['自动适配颜色', '保留原色', '自定义颜色'], signatureMaskIndex: 0,
     signatureAnchors: ['参数旁', '相机型号旁'], signatureAnchorIndex: 0,
@@ -30,7 +30,7 @@ Page({
     if (!this.photos.length) { wx.redirectTo({ url: '/pages/home/index' }); return }
     const saved = app.preferences || {}
     const settings = { ...core.defaultExport, ...saved.settings }
-    this.setData({ settings, sizeIndex: Math.max(0, [1280, 2048, 2560].indexOf(settings.maxSide)), formatIndex: settings.format === 'png' ? 1 : 0, notice: (app.importFailures || []).join('\n') })
+    this.setData({ settings, sizeIndex: Math.max(0, [0, 1280, 2048, 2560, 4096].indexOf(settings.maxSide)), formatIndex: settings.format === 'png' ? 1 : 0, notice: (app.importFailures || []).join('\n') })
     this.setData({ savedDateFormats: core.parseSavedDateTimeFormats(JSON.stringify(saved.dateFormats || [])) })
     this.refreshPhoto()
   },
@@ -257,10 +257,10 @@ Page({
   changeSetting(event) {
     const key = event.currentTarget.dataset.key
     let value = event.detail.value
-    if (key === 'maxSide') value = [1280, 2048, 2560][Number(value)]
+    if (key === 'maxSide') value = [0, 1280, 2048, 2560, 4096][Number(value)]
     if (key === 'format') value = Number(value) === 0 ? 'jpg' : 'png'
     const settings = { ...this.data.settings, [key]: value }
-    this.setData({ settings, sizeIndex: [1280, 2048, 2560].indexOf(settings.maxSide), formatIndex: settings.format === 'png' ? 1 : 0 })
+    this.setData({ settings, sizeIndex: [0, 1280, 2048, 2560, 4096].indexOf(settings.maxSide), formatIndex: settings.format === 'png' ? 1 : 0 })
     const preferences = { ...(getApp().globalData.preferences || {}), settings }
     getApp().globalData.preferences = preferences
     wx.setStorageSync(STORAGE.preferences, preferences)
@@ -314,7 +314,11 @@ Page({
   cancelExport() { this.cancelled = true; this.setData({ progress: '当前照片完成后停止' }) },
   async savePhotos(event) {
     if (this.data.exporting || this.data.importing || !this.canvas) return
-    const photos = (event.currentTarget.dataset.all ? this.photos : [this.currentPhoto()]).map(photo => clone(core.withBrandLogos(photo, getApp().globalData.customLogos)))
+    const all = !!event.currentTarget.dataset.all
+    const selected = all ? this.photos.filter(core.isPhotoProcessed) : [this.currentPhoto()]
+    const skipped = all ? this.photos.length - selected.length : 0
+    if (!selected.length) { this.setData({ error: '没有已处理的照片可以导出。' }); return }
+    const photos = selected.map(photo => clone(core.withBrandLogos(photo, getApp().globalData.customLogos)))
     try { photos.forEach(photo => core.validateConfig(photo.config)) }
     catch (error) { this.setData({ error: error.message }); return }
     this.cancelled = false
@@ -333,13 +337,44 @@ Page({
         saved++
         this.setData({ savedCount: saved, lastExport: result })
       }
-      if (!this.unloaded) this.setData({ notice: this.cancelled ? `已停止，已保存 ${saved} 张照片。` : `已保存 ${saved} 张照片到相册。`, progress: '' })
+      if (!this.unloaded) this.setData({ notice: this.cancelled ? `已停止，已保存 ${saved} 张照片。` : `已保存 ${saved} 张照片到相册。${skipped ? '跳过 ' + skipped + ' 张未处理照片。' : ''}`, progress: '' })
     } catch (error) {
       if (!this.unloaded) {
         const permission = /auth|denied|permission/i.test(error.errMsg || '')
         this.setData({ error: permission ? '需要相册写入权限，请点击下方按钮开启后重新保存。' : `导出中断，已保存 ${saved} 张。${error.message || '请检查剩余存储空间并重试。'}`, needsPermission: permission, progress: '' })
       }
     } finally { if (!this.unloaded) this.setData({ exporting: false }) }
+  },
+  async exportFile(event) {
+    if (this.data.exporting || this.data.importing || !this.canvas) return
+    const all = !!event.currentTarget.dataset.all
+    const selected = all ? this.photos.filter(core.isPhotoProcessed) : [this.currentPhoto()]
+    const photos = selected.map(photo => clone(core.withBrandLogos(photo, getApp().globalData.customLogos)))
+    const skipped = all ? this.photos.length - selected.length : 0
+    this.cancelled = false
+    clearTimeout(this.previewTimer)
+    this.renderVersion++
+    this.setData({ exporting: true, rendering: false, error: '', notice: '', progress: '正在生成文件…' })
+    try {
+      photos.forEach(photo => core.validateConfig(photo.config))
+      const result = await core.exportFiles(photos, this.canvas, this.data.settings, (current, total, packing) => {
+        if (!this.unloaded) this.setData({ progress: packing ? '正在打包 ZIP…' : '正在处理 ' + (current + 1) + ' / ' + total })
+      }, () => this.cancelled || this.unloaded)
+      if (this.unloaded) return
+      this.setData({ lastExport: result.lastImage, lastFileExport: result, progress: '' })
+      await core.api('shareFileMessage', { filePath: result.path, fileName: result.fileName })
+      this.setData({ notice: '已生成 ' + result.count + ' 张照片的导出文件。' + (skipped ? '跳过 ' + skipped + ' 张未处理照片。' : '') })
+    } catch (error) {
+      if (!this.unloaded) this.setData({ error: /cancel/i.test(error.errMsg || '') ? '' : error.message || '文件导出失败，请更新微信或选择保存到相册。' })
+    } finally { if (!this.unloaded) this.setData({ exporting: false, progress: '' }) }
+  },
+  async clearPhotos() {
+    if (this.data.exporting || this.data.importing) return
+    const response = await core.api('showModal', { title: '结束本次编辑', content: '移出全部照片及本次样式设置，原始照片和已保存的签名不受影响。', confirmText: '移出' })
+    if (!response.confirm) return
+    getApp().globalData.photos = []
+    getApp().globalData.customLogos = new Map()
+    wx.navigateBack()
   },
   permissionChanged() { this.setData({ needsPermission: false, error: '' }) },
   detectExport() {
