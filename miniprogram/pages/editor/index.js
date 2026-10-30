@@ -7,7 +7,7 @@ const clone = value => JSON.parse(JSON.stringify(value))
 Page({
   data: {
     appVersion: core.APP_VERSION,
-    photos: [], activeIndex: 0, tab: 'template',
+    photos: [], activeIndex: 0, tab: 'template', brands: [], selectionOpen: false, selectedIds: [], selectionPhotos: [],
     tabs: [{ id: 'template', name: '模板' }, { id: 'exif', name: '参数' }, { id: 'signature', name: '签名' }, { id: 'export', name: '导出' }],
     templates: core.templates.map(item => ({ id: item.id, name: item.name })),
     logos: [{ name: '自动识别相机品牌', path: '' }, ...core.logos],
@@ -24,6 +24,7 @@ Page({
   onLoad() {
     const app = getApp().globalData
     this.photos = app.photos
+    if (!app.customLogos) app.customLogos = new Map()
     this.renderVersion = 0
     this.unloaded = false
     if (!this.photos.length) { wx.redirectTo({ url: '/pages/home/index' }); return }
@@ -56,6 +57,7 @@ Page({
     const signature = { ...core.DEFAULT_SIGNATURE, ...config.signature }
     this.setData({
       photos: this.photos.map(item => ({ id: item.id, path: item.path, name: item.name })),
+      brands: core.brandGroups(this.photos, getApp().globalData.customLogos).map(item => ({ ...item, logoIndex: Math.max(0, this.data.logos.findIndex(logo => logo.path === item.path)) })),
       photoName: photo.name, isDemo: !!photo.isDemo, sourceSize: `${photo.width} × ${photo.height}`,
       config, signature, controls: core.templateControls(photo.templateId, config), datePreview: core.formatDateTimeValue(exif.DateTimeOriginal || '2026-10-12 14:30:45', config.dateTimeFormat, config.customDateTimeFormat), options: core.template(photo.templateId).userOptions, templateId: photo.templateId,
       labels: Object.fromEntries(['imageMargin', 'watermarkScale', 'borderRadius', 'blurRadius', 'nikonZScale'].map(key => [key, Math.round(Number(config[key]) * 100)]).concat([['signatureWidth', Math.round(signature.width * 100)]])),
@@ -112,7 +114,7 @@ Page({
     this.previewTimer = setTimeout(async () => {
       if (this.unloaded || version !== this.renderVersion) return
       try {
-        const result = await core.previewPhoto(this.currentPhoto(), this.canvas)
+        const result = await core.previewPhoto(core.withBrandLogos(this.currentPhoto(), getApp().globalData.customLogos), this.canvas)
         if (!this.unloaded && version === this.renderVersion) this.setData({ preview: result.path, previewWidth: result.width, previewHeight: result.height, rendering: false })
       } catch (error) {
         if (!this.unloaded && version === this.renderVersion) this.setData({ rendering: false, error: '预览失败：' + (error.message || '请重新选择照片') })
@@ -151,15 +153,31 @@ Page({
   changeDate(event) { this.currentPhoto().config.dateTimeFormat = dateFormats[Number(event.detail.value)].value; this.refreshPhoto(); this.requestPreview() },
   changeLogo(event) {
     const path = this.data.logos[Number(event.detail.value)].path
-    Object.assign(this.currentPhoto().config, { customLogoUrl: path, customDefaultLogoUrl: path })
+    const brand = event.currentTarget.dataset.brand === undefined ? core.photoBrand(this.currentPhoto()) : event.currentTarget.dataset.brand
+    if (path) getApp().globalData.customLogos.set(brand, path)
+    else getApp().globalData.customLogos.delete(brand)
     this.refreshPhoto(); this.requestPreview()
   },
-  changeTextPosition(event) { this.currentPhoto().config.textPosition = ['bottom-center', 'top-center', 'left-bottom', 'right-bottom'][Number(event.detail.value)]; this.refreshPhoto(); this.requestPreview() },
-  async chooseSignature() {
+  async uploadLogo(event) {
     if (this.data.exporting || this.data.importing || !this.canvas) return
     this.setData({ importing: true, error: '' })
     try {
-      const signature = await core.importSignature(this.canvas)
+      const path = await core.importLogo(this.canvas, event.currentTarget.dataset.source || 'album')
+      getApp().globalData.customLogos.set(event.currentTarget.dataset.brand, path)
+      this.refreshPhoto(); this.requestPreview()
+    } catch (error) { if (!/cancel/i.test(error.errMsg || '')) this.setData({ error: error.message || '无法读取 Logo 图片。' }) }
+    finally { if (!this.unloaded) this.setData({ importing: false }) }
+  },
+  resetLogo(event) {
+    getApp().globalData.customLogos.delete(event.currentTarget.dataset.brand)
+    this.refreshPhoto(); this.requestPreview()
+  },
+  changeTextPosition(event) { this.currentPhoto().config.textPosition = ['bottom-center', 'top-center', 'left-bottom', 'right-bottom'][Number(event.detail.value)]; this.refreshPhoto(); this.requestPreview() },
+  async chooseSignature(event) {
+    if (this.data.exporting || this.data.importing || !this.canvas) return
+    this.setData({ importing: true, error: '' })
+    try {
+      const signature = await core.importSignature(this.canvas, event?.currentTarget?.dataset?.source || 'album')
       this.currentPhoto().config.signature = { ...this.data.signature, dataUrl: signature.dataUrl, name: signature.name, aspectRatio: signature.aspectRatio, enabled: true }
       getApp().globalData.signature = { ...this.currentPhoto().config.signature }
       wx.setStorageSync(STORAGE.signature, this.currentPhoto().config.signature)
@@ -247,11 +265,11 @@ Page({
     getApp().globalData.preferences = preferences
     wx.setStorageSync(STORAGE.preferences, preferences)
   },
-  async addPhotos() {
-    if (this.data.exporting || this.data.importing || this.photos.length >= 9) return
+  async addPhotos(event) {
+    if (this.data.exporting || this.data.importing) return
     this.setData({ importing: true, error: '' })
     try {
-      const result = await core.importPhotos(this.currentPhoto().templateId, 9 - this.photos.length)
+      const result = await core.importPhotos('noProcess', 9, event?.currentTarget?.dataset?.source || 'album')
       const app = getApp().globalData
       for (const photo of result.photos) this.photos.push({ ...photo, id: app.nextPhotoId++, config: { ...photo.config, ...(app.signature ? { signature: { ...app.signature } } : {}) } })
       this.setData({ notice: result.failures.join('\n') }); this.refreshPhoto()
@@ -272,14 +290,31 @@ Page({
     const result = await core.api('showModal', { title: '应用到全部照片', content: '将当前模板、样式和签名应用到所有照片。每张照片仍使用自己的 EXIF 参数。', confirmText: '应用' })
     if (!result.confirm) return
     const current = this.currentPhoto()
-    for (const photo of this.photos) { photo.templateId = current.templateId; photo.config = clone(current.config) }
+    core.applyPhotoStyle(this.photos, current, this.photos.map(photo => photo.id))
+    this.refreshPhoto(); this.requestPreview()
     wx.showToast({ title: '已应用到全部', icon: 'success' })
+  },
+  openSelection() { this.setData({ selectionOpen: true, selectedIds: [], selectionPhotos: this.data.photos.map(photo => ({ ...photo, selected: false })) }) },
+  selectTargets(event) {
+    const selectedIds = event.detail.value.map(String)
+    this.setData({ selectedIds, selectionPhotos: this.data.photos.map(photo => ({ ...photo, selected: selectedIds.includes(String(photo.id)) })) })
+  },
+  selectAllTargets() { this.selectTargets({ detail: { value: this.photos.map(photo => String(photo.id)) } }) },
+  clearTargets() { this.selectTargets({ detail: { value: [] } }) },
+  async applyToSelected() {
+    if (this.data.exporting || !this.data.selectedIds.length) return
+    const response = await core.api('showModal', { title: '应用到选中照片', content: '将当前模板、样式和签名应用到选中的 ' + this.data.selectedIds.length + ' 张照片，保留各自的 EXIF 参数。', confirmText: '应用' })
+    if (!response.confirm) return
+    core.applyPhotoStyle(this.photos, this.currentPhoto(), this.data.selectedIds)
+    this.setData({ selectionOpen: false })
+    this.refreshPhoto(); this.requestPreview()
+    wx.showToast({ title: '已应用到选中照片', icon: 'success' })
   },
   previewImage() { if (this.data.preview) wx.previewImage({ urls: [this.data.preview] }) },
   cancelExport() { this.cancelled = true; this.setData({ progress: '当前照片完成后停止' }) },
   async savePhotos(event) {
     if (this.data.exporting || this.data.importing || !this.canvas) return
-    const photos = event.currentTarget.dataset.all ? this.photos.map(clone) : [clone(this.currentPhoto())]
+    const photos = (event.currentTarget.dataset.all ? this.photos : [this.currentPhoto()]).map(photo => clone(core.withBrandLogos(photo, getApp().globalData.customLogos)))
     try { photos.forEach(photo => core.validateConfig(photo.config)) }
     catch (error) { this.setData({ error: error.message }); return }
     this.cancelled = false

@@ -9,11 +9,11 @@ Page({
     error: ''
   },
   onShow() { this.setData({ photoCount: getApp().globalData.photos.length }) },
-  async choosePhotos() {
+  async choosePhotos(event) {
     if (this.data.busy) return
     this.setData({ busy: true, error: '' })
     try {
-      const result = await core.importPhotos()
+      const result = await core.importPhotos('noProcess', 9, event?.currentTarget?.dataset?.source || 'album')
       if (!result.photos.length) {
         if (result.failures.length) this.setData({ error: result.failures.join('\n') })
         return

@@ -20,6 +20,7 @@ export { getDefaultSignatureAnchor, clampSignatureOpacity, clampSignatureWidth, 
 export { addSavedDateTimeFormat, parseSavedDateTimeFormats } from './shared/lib/editor/savedDateTimeFormats'
 export { formatDateTimeValue } from './shared/lib/editor/exif'
 export { readPhotoMetadata, metadataPage } from './metadata'
+export { photoBrand, withBrandLogos, brandGroups, applyPhotoStyle } from './photo-selection'
 export const templates = ['noProcess', 'standard1', 'standard2', 'logoCentered', 'blurBackground', 'nikonBlur', 'folderNameParams', 'centeredWatermark', 'sidebarWatermark', 'centeredWatermark2', 'personalText'].map(key => (templateDefinitions as any)[key])
 export const logos = BUILTIN_LOGOS.map(logo => ({ ...logo, path: logo.path.replace(/\.svg$/, '.png') })).filter((logo, index, list) => list.findIndex(item => item.path === logo.path) === index)
 export const defaultExport = { maxSide: 2048, format: 'jpg', preserveExif: true, photographyOnly: false }
@@ -80,11 +81,18 @@ export function createDemo(id: number, templateId = 'standard1') {
   return { id, path: '/assets/sample.jpg', name: '山间晨光 · 示例', width: 1080, height: 720, exif: { ...demoExif }, rawExif: { ...demoExif }, overrides: {}, templateId, config: defaults(templateId), isDemo: true }
 }
 
-export async function importPhotos(templateId = 'standard1', remaining = 9) {
-  const result = await api('chooseMedia', { count: Math.min(9, remaining), mediaType: ['image'], sourceType: ['album', 'camera'], sizeType: ['original'] })
+export async function pickImages(source = 'album', count = 9) {
+  const result = source === 'message'
+    ? await api('chooseMessageFile', { count: Math.min(100, count), type: 'image' })
+    : await api('chooseMedia', { count: Math.min(9, count), mediaType: ['image'], sourceType: ['album', 'camera'], sizeType: ['original'] })
+  return (result.tempFiles || []).map((file: any) => ({ ...file, tempFilePath: file.tempFilePath || file.path }))
+}
+
+export async function importPhotos(templateId = 'noProcess', remaining = 9, source = 'album') {
+  const selected = await pickImages(source, remaining)
   const photos = []
   const failures = []
-  for (const file of result.tempFiles || []) {
+  for (const file of selected) {
     try {
       if (file.size > 40 * 1024 * 1024) throw new Error('照片超过 40 MB，请选择较小的图片。')
       const info = await api('getImageInfo', { src: file.tempFilePath })
@@ -93,7 +101,7 @@ export async function importPhotos(templateId = 'standard1', remaining = 9) {
       let metadataWarning = ''
       try { rawExif = await exifr.parse(bytes, { mergeOutput: true, translateValues: true, reviveValues: true }) || {} }
       catch { metadataWarning = '未能读取 EXIF，可以手动补充。' }
-      photos.push({ path: file.tempFilePath, name: file.tempFilePath.split('/').pop(), width: info.width, height: info.height, exif: normalizeParsedExif(rawExif), rawExif, overrides: {}, templateId, config: defaults(templateId), metadataWarning })
+      photos.push({ path: file.tempFilePath, name: file.name || file.tempFilePath.split('/').pop(), type: info.type || '', size: bytes.length, width: info.width, height: info.height, exif: normalizeParsedExif(rawExif), rawExif, overrides: {}, templateId, config: defaults(templateId), metadataWarning })
     } catch (error: any) { failures.push(error.message || error.errMsg || '图片无法读取') }
   }
   return { photos, failures }
@@ -197,12 +205,13 @@ export function exportPhoto(photo: any, canvas: HTMLCanvasElement, settings: any
   })
 }
 
-export function importSignature(canvas: HTMLCanvasElement) {
+export function importSignature(canvas: HTMLCanvasElement, sourceType = 'album') {
   return exclusive(async () => {
     try {
       initialize()
-      const picked = await api('chooseMedia', { count: 1, mediaType: ['image'], sourceType: ['album'], sizeType: ['original'] })
-      const path = picked.tempFiles[0].tempFilePath
+      const picked = await pickImages(sourceType, 1)
+      if (!picked[0]) throw new Error('未选择签名图片。')
+      const path = picked[0].tempFilePath
       const bytes = await readBytes(path)
       if (bytes.length > 10 * 1024 * 1024 || Array.from(bytes.subarray(0, 8)).join(',') !== '137,80,78,71,13,10,26,10') throw new Error('请选择 10 MB 以内的透明 PNG 签名。')
       const image = await loadImage(path)
@@ -219,7 +228,24 @@ export function importSignature(canvas: HTMLCanvasElement) {
       cropped.getContext('2d')!.drawImage(source, left, top, cropped.width, cropped.height, 0, 0, cropped.width, cropped.height)
       const temp = await canvasFile(cropped, canvas, 'png')
       const dataUrl = await writeBytes(`${wx.env.USER_DATA_PATH}/yingqian-signature-${Date.now()}-${++signatureSerial}.png`, await readBytes(temp))
-      return { ...DEFAULT_SIGNATURE, dataUrl, name: '我的签名', aspectRatio: cropped.width / cropped.height }
+      return { ...DEFAULT_SIGNATURE, dataUrl, name: picked[0].name || '我的签名', aspectRatio: cropped.width / cropped.height }
+    } finally { releaseCanvases(); canvas.width = 1; canvas.height = 1 }
+  })
+}
+
+export function importLogo(canvas: HTMLCanvasElement, sourceType = 'album') {
+  return exclusive(async () => {
+    try {
+      initialize()
+      const selected = await pickImages(sourceType, 1)
+      if (!selected[0]) throw new Error('未选择 Logo 图片。')
+      const bytes = await readBytes(selected[0].tempFilePath)
+      if (bytes.length > 40 * 1024 * 1024) throw new Error('Logo 图片超过 40 MB。')
+      const image = await loadImage(selected[0].tempFilePath)
+      const source = createCanvas(image.width, image.height)
+      source.getContext('2d')!.drawImage(image, 0, 0)
+      const temp = await canvasFile(source, canvas, 'png')
+      return writeBytes(`${wx.env.USER_DATA_PATH}/yingqian-logo-${Date.now()}-${++signatureSerial}.png`, await readBytes(temp))
     } finally { releaseCanvases(); canvas.width = 1; canvas.height = 1 }
   })
 }

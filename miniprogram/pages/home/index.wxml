@@ -12,7 +12,7 @@
   <view class="sample-note"><text class="mono">01 / 11</text><text>经典版式 · 实拍示例</text></view>
   <view class="actions stack">
     <button id="choose-photos" class="primary" loading="{{busy}}" disabled="{{busy}}" bindtap="choosePhotos">＋ 选择照片，开始制作</button>
-    <view class="row secondary-actions"><button id="use-demo" class="link" disabled="{{busy}}" bindtap="useDemo">先用示例体验</button><button wx:if="{{photoCount}}" id="resume" class="link" bindtap="resume">继续编辑 {{photoCount}} 张照片 →</button><text wx:else class="hint">一次最多选择 9 张</text></view>
+    <view class="row secondary-actions"><button id="use-demo" class="link" disabled="{{busy}}" bindtap="useDemo">先用示例体验</button><button wx:if="{{photoCount}}" id="resume" class="link" bindtap="resume">继续编辑 {{photoCount}} 张照片 →</button><text wx:else class="hint">每次选择最多 9 张，可继续追加</text></view>
     <view wx:if="{{error}}" class="error">{{error}}</view>
   </view>
   <view class="privacy row"><view class="privacy-symbol">✓</view><view><view class="field-label">照片只在你的设备上处理</view><view class="hint">无需登录，无需上传，保留原始照片。</view></view></view>
@@ -20,5 +20,6 @@
     <view class="row section-head"><view class="title">选一款，适合你的风格</view><text class="badge">11 款模板</text></view>
     <view class="template-grid"><view wx:for="{{templates}}" wx:key="id" class="template-card" data-id="{{item.id}}" bindtap="useDemo"><view class="template-mini template-{{item.id}}"><image src="/assets/sample.jpg" mode="aspectFill" /><view class="mini-caption"><view></view><view></view></view></view><view class="row template-label"><text>{{item.name}}</text><text class="mono muted">{{item.number}}</text></view></view></view>
   </view>
+  <button class="secondary section" data-source="message" bindtap="choosePhotos">从聊天文件选择照片</button>
   <view class="footer"><view>映签 · <text class="mono">v{{appVersion}}</text></view><view class="footer-caption">每一张，都是你的作品</view></view>
 </view>

@@ -53,6 +53,7 @@ const wx = {
     canvas.encode(fileType === 'jpg' ? 'jpeg' : 'png').then(bytes => writeFile(tempFilePath, bytes)).then(() => success({ tempFilePath }), fail)
   },
   chooseMedia({ success }) { success({ tempFiles: chosen }) },
+  chooseMessageFile({ success }) { success({ tempFiles: chosen }) },
   getImageInfo({ src, success, fail }) { sharp(localPath(src)).metadata().then(info => success({ width: info.width, height: info.height }), fail) }
 }
 const bundled = await build({
@@ -301,4 +302,58 @@ test('full metadata retains nested private and binary tags without changing phot
   for (let page = 0; page < first.pages; page++) chunks.push(...core.metadataPage(all, '', page).rows)
   assert.equal(chunks.map(row => row.value).join(''), longValue)
   assert.ok(chunks.every(row => row.value.length <= 4096))
+})
+
+test('chat photo imports retain filenames and begin without an applied template', async () => {
+  chosen = [{ path: sample, name: 'original-photo.jpg', size: 100000 }]
+  const imported = await core.importPhotos(undefined, 9, 'message')
+  assert.equal(imported.photos[0].name, 'original-photo.jpg')
+  assert.equal(imported.photos[0].templateId, 'noProcess')
+  assert.equal(imported.photos[0].path, sample)
+})
+
+test('photo selection changes only chosen styles and respects each effective camera brand', () => {
+  const photos = [core.createDemo(1), core.createDemo(2), core.createDemo(3)]
+  photos[0].config.textColor = '#123456'
+  photos[1].overrides = { Make: 'Canon', Model: 'SECOND' }
+  photos[2].overrides = { Make: '', Model: 'THIRD' }
+  const previous = JSON.stringify(photos[2].config)
+  core.applyPhotoStyle(photos, photos[0], [2])
+  assert.equal(photos[1].config.textColor, '#123456')
+  assert.equal(photos[1].overrides.Model, 'SECOND')
+  assert.equal(JSON.stringify(photos[2].config), previous)
+  const logos = new Map([['NIKON', '/logos/nikon.png'], ['Canon', '/logos/sony.png'], ['', '/logos/apple.png']])
+  assert.equal(core.withBrandLogos(photos[1], logos).config.customLogoUrl, '/logos/sony.png')
+  assert.equal(core.withBrandLogos(photos[2], logos).config.customDefaultLogoUrl, '/logos/apple.png')
+  logos.delete('Canon')
+  assert.equal(core.withBrandLogos(photos[1], logos).config.customLogoUrl, undefined)
+  assert.deepEqual(Array.from(core.brandGroups(photos, logos), row => row.count), [1,1,1])
+})
+
+test('editing sessions accept additional batches beyond nine photographs', async () => {
+  const { page, app } = await pageHarness({ importPhotos: async (templateId, count) => {
+    assert.equal(templateId, 'noProcess')
+    assert.equal(count, 9)
+    return { photos: [core.createDemo(100, templateId)], failures: [] }
+  } })
+  page.photos.splice(0, page.photos.length, ...Array.from({ length: 9 }, (_, index) => core.createDemo(index + 1)))
+  app.globalData.nextPhotoId = 10
+  await page.addPhotos()
+  assert.equal(page.photos.length, 10)
+  assert.equal(page.photos[9].templateId, 'noProcess')
+  page.openSelection()
+  page.selectTargets({ detail: { value: ['10'] } })
+  page.currentPhoto().config.padding = 0.075
+  await page.applyToSelected()
+  assert.equal(page.photos[9].config.padding, 0.075)
+  assert.notEqual(page.photos[1].config.padding, 0.075)
+  page.onUnload()
+})
+
+test('custom logo import persists an independent local image without changing the source', async () => {
+  chosen = [{ tempFilePath: sample }]
+  const logo = await core.importLogo(target)
+  assert.match(logo, /yingqian-logo-\d+-\d+\.png$/)
+  assert.deepEqual([(await sharp(logo).metadata()).width, (await sharp(logo).metadata()).height], [1080, 720])
+  assert.equal(createHash('sha256').update(await readFile(sample)).digest('hex'), originalHash)
 })
