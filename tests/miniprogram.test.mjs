@@ -471,3 +471,14 @@ test('cancelling detection before analysis starts prevents stale results and all
   assert.equal(page.data.result.marker, 'retry marker')
   page.onUnload()
 })
+
+test('removing a selected photo refreshes the batch selection instead of applying to stale entries', async () => {
+  const { page } = await pageHarness()
+  page.openSelection()
+  page.selectTargets({ detail: { value: [String(page.photos[1].id)] } })
+  page.selectPhoto({ currentTarget: { dataset: { index: 1 } } })
+  await page.removePhoto()
+  assert.equal(page.data.selectionPhotos.length, 1)
+  assert.equal(page.data.selectedIds.length, 0)
+  page.onUnload()
+})

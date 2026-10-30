@@ -55,8 +55,10 @@ Page({
     const config = photo.config
     const exif = { ...photo.exif, ...photo.overrides }
     const signature = { ...core.DEFAULT_SIGNATURE, ...config.signature }
+    const selected = new Set(this.data.selectedIds.map(String))
+    const photoItems = this.photos.map(item => ({ id: item.id, path: item.path, name: item.name, selected: selected.has(String(item.id)) }))
     this.setData({
-      photos: this.photos.map(item => ({ id: item.id, path: item.path, name: item.name })),
+      photos: photoItems, selectionPhotos: photoItems, selectedIds: photoItems.filter(item => item.selected).map(item => String(item.id)),
       brands: core.brandGroups(this.photos, getApp().globalData.customLogos).map(item => ({ ...item, logoIndex: Math.max(0, this.data.logos.findIndex(logo => logo.path === item.path)) })),
       photoName: photo.name, isDemo: !!photo.isDemo, sourceSize: `${photo.width} × ${photo.height}`,
       config, signature, controls: core.templateControls(photo.templateId, config), datePreview: core.formatDateTimeValue(exif.DateTimeOriginal || '2026-10-12 14:30:45', config.dateTimeFormat, config.customDateTimeFormat), options: core.template(photo.templateId).userOptions, templateId: photo.templateId,
