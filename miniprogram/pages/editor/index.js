@@ -147,7 +147,7 @@ Page({
     this.refreshPhoto(); this.requestPreview()
   },
   resetExif() { this.currentPhoto().overrides = {}; this.refreshPhoto(); this.requestPreview() },
-  toggleRaw() { this.setData({ showRaw: !this.data.showRaw }) },
+  toggleRaw() { wx.navigateTo({ url: '/pages/metadata/index?id=' + this.currentPhoto().id }) },
   changeDate(event) { this.currentPhoto().config.dateTimeFormat = dateFormats[Number(event.detail.value)].value; this.refreshPhoto(); this.requestPreview() },
   changeLogo(event) {
     const path = this.data.logos[Number(event.detail.value)].path

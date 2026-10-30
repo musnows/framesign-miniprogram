@@ -19,6 +19,7 @@ export { api, readBytes, fitDimensions, EDITABLE_EXIF_FIELDS, DATE_TIME_FORMAT_O
 export { getDefaultSignatureAnchor, clampSignatureOpacity, clampSignatureWidth, setSignatureWidth, signatureBounds, draggedSignatureWidth } from './shared/lib/editor/signature'
 export { addSavedDateTimeFormat, parseSavedDateTimeFormats } from './shared/lib/editor/savedDateTimeFormats'
 export { formatDateTimeValue } from './shared/lib/editor/exif'
+export { readPhotoMetadata, metadataPage } from './metadata'
 export const templates = ['noProcess', 'standard1', 'standard2', 'logoCentered', 'blurBackground', 'nikonBlur', 'folderNameParams', 'centeredWatermark', 'sidebarWatermark', 'centeredWatermark2', 'personalText'].map(key => (templateDefinitions as any)[key])
 export const logos = BUILTIN_LOGOS.map(logo => ({ ...logo, path: logo.path.replace(/\.svg$/, '.png') })).filter((logo, index, list) => list.findIndex(item => item.path === logo.path) === index)
 export const defaultExport = { maxSide: 2048, format: 'jpg', preserveExif: true, photographyOnly: false }

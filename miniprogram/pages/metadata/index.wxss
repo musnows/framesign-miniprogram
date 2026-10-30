@@ -1,0 +1,5 @@
+.metadata-page { padding: 32rpx 28rpx 80rpx; }
+.file-name { word-break: break-all; margin-top: 14rpx; }
+.metadata-row { display: flex; flex-direction: column; gap: 12rpx; padding: 24rpx 0; border-bottom: 1rpx solid #e9e5dc; font-size: 24rpx; }
+.metadata-value, .metadata-row .mono { white-space: pre-wrap; word-break: break-all; }
+.metadata-page .row button { flex: 1; }

@@ -34,8 +34,7 @@
       <view wx:for="{{fields}}" wx:key="key" class="field"><view class="row"><text class="field-label">{{item.label}}</text><switch color="#d3a239" wx:if="{{item.supported}}" checked="{{item.visible}}" data-key="{{item.showKey}}" bindchange="changeConfig" /></view><input id="exif-{{item.key}}" value="{{item.value}}" placeholder="未读取到，可手动填写" maxlength="160" data-key="{{item.key}}" bindblur="changeExif" /></view>
       <view class="field"><text class="field-label">时间显示格式</text><picker range="{{dateFormats}}" range-key="label" value="{{dateIndex}}" bindchange="changeDate"><view class="picker">{{dateFormats[dateIndex].label}} ⌄</view></picker><input wx:if="{{config.dateTimeFormat === 'custom'}}" class="mono" value="{{config.customDateTimeFormat}}" maxlength="120" placeholder="YYYY-MM-DD HH:mm:ss" data-key="customDateTimeFormat" bindblur="changeConfig" /></view>
       <view wx:if="{{config.showDateTime}}" class="hint">时间预览：{{datePreview}}</view><button wx:if="{{config.dateTimeFormat === 'custom'}}" class="secondary apply-all" bindtap="saveDateFormat">保存此时间格式</button><view class="chips"><button wx:for="{{savedDateFormats}}" wx:key="*this" class="chip" data-format="{{item}}" bindtap="applyDateFormat">{{item}}</button></view><button class="link small apply-all" data-group="content" bindtap="resetConfigGroup">恢复显示字段及时间格式</button>
-      <button class="link" bindtap="toggleRaw">{{showRaw ? '收起' : '查看'}}原始 EXIF · {{rawFields.length}} 项</button>
-      <view wx:if="{{showRaw}}" class="raw-exif"><view wx:for="{{rawFields}}" wx:key="key" class="raw-row"><text class="mono small muted">{{item.key}}</text><text selectable>{{item.value}}</text></view><view wx:if="{{!rawFields.length}}" class="hint">这张照片未包含可读取的 EXIF。</view></view>
+      <button class="link" bindtap="toggleRaw">查看完整 EXIF 与元数据</button>
     </block>
     <block wx:elif="{{tab === 'signature'}}">
       <view class="section-label">PNG 手写签名</view><view class="hint">选择透明背景的 PNG，自动裁去透明留白。</view>

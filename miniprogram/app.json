@@ -1,5 +1,5 @@
 {
-  "pages": ["pages/home/index", "pages/editor/index", "pages/detect/index"],
+  "pages": ["pages/home/index", "pages/editor/index", "pages/detect/index", "pages/metadata/index"],
   "window": {
     "navigationBarTitleText": "映签",
     "navigationBarBackgroundColor": "#faf9f6",

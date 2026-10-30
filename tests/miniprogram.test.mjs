@@ -284,3 +284,21 @@ test('template resets preserve signature while saved date patterns survive expor
   assert.equal(page.currentPhoto().config.textColor, core.defaults(page.currentPhoto().templateId).textColor)
   page.onUnload()
 })
+
+test('full metadata retains nested private and binary tags without changing photograph overrides', async () => {
+  const photo = { ...core.createDemo(90), path: path.join(artifacts, 'full-metadata.jpg'), overrides: { Model: 'DISPLAY ONLY' } }
+  await writeFile(photo.path, metadataFixture(await readFile(sample)))
+  const rows = await core.readPhotoMetadata(photo)
+  assert.ok(rows.some(row => /Model$/.test(row.key) && row.value === 'NIKON Zf'))
+  assert.ok(rows.some(row => /GPSLatitude/.test(row.key)))
+  assert.ok(rows.some(row => /MakerNote/.test(row.key) && row.binary && row.value.length > 0))
+  assert.equal(photo.overrides.Model, 'DISPLAY ONLY')
+  assert.ok(core.metadataPage(rows, 'gps').matching > 0)
+  const longValue = 'ab '.repeat(50000)
+  const all = [{ key: 'exif.MakerNote', value: longValue, binary: true }]
+  const first = core.metadataPage(all)
+  const chunks = []
+  for (let page = 0; page < first.pages; page++) chunks.push(...core.metadataPage(all, '', page).rows)
+  assert.equal(chunks.map(row => row.value).join(''), longValue)
+  assert.ok(chunks.every(row => row.value.length <= 4096))
+})
