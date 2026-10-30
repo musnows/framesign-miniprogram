@@ -145,7 +145,7 @@ Page({
   },
   changeExif(event) {
     if (this.data.exporting) return
-    this.currentPhoto().overrides[event.currentTarget.dataset.key] = event.detail.value.trim()
+    this.currentPhoto().overrides = core.normalizeExifOverrides({ ...this.currentPhoto().overrides, [event.currentTarget.dataset.key]: event.detail.value })
     this.refreshPhoto(); this.requestPreview()
   },
   resetExif() { this.currentPhoto().overrides = {}; this.refreshPhoto(); this.requestPreview() },
@@ -362,10 +362,23 @@ Page({
       }, () => this.cancelled || this.unloaded)
       if (this.unloaded) return
       this.setData({ lastExport: result.lastImage, lastFileExport: result, progress: '' })
-      await core.api('shareFileMessage', { filePath: result.path, fileName: result.fileName })
-      this.setData({ notice: '已生成 ' + result.count + ' 张照片的导出文件。' + (skipped ? '跳过 ' + skipped + ' 张未处理照片。' : '') })
+      this.setData({ notice: '已生成 ' + result.count + ' 张照片的导出文件，请点击下方按钮转发文件。' + (skipped ? '跳过 ' + skipped + ' 张未处理照片。' : '') })
     } catch (error) {
+      if (!/cancel/i.test(error.errMsg || '')) console.error('[FrameSign] File export failed:', error.errMsg || error.message || String(error))
       if (!this.unloaded) this.setData({ error: /cancel/i.test(error.errMsg || '') ? '' : error.message || '文件导出失败，请更新微信或选择保存到相册。' })
+    } finally { if (!this.unloaded) this.setData({ exporting: false, progress: '' }) }
+  },
+  async shareExportFile() {
+    if (this.data.exporting || !this.data.lastFileExport) return
+    const result = this.data.lastFileExport
+    const pending = core.api('shareFileMessage', { filePath: result.path, fileName: result.fileName })
+    this.setData({ exporting: true, progress: '正在打开文件界面…', error: '' })
+    try {
+      await pending
+      if (!this.unloaded) this.setData({ notice: '已打开导出文件的微信转发界面。' })
+    } catch (error) {
+      if (!/cancel/i.test(error.errMsg || '')) console.warn('[FrameSign] Native file handoff failed:', error.errMsg || error.message || String(error))
+      if (!this.unloaded && !/cancel/i.test(error.errMsg || '')) this.setData({ error: '无法打开文件转发，请重新点击转发按钮，或更新微信后重试。' })
     } finally { if (!this.unloaded) this.setData({ exporting: false, progress: '' }) }
   },
   async clearPhotos() {

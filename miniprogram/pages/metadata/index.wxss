@@ -3,3 +3,4 @@
 .metadata-row { display: flex; flex-direction: column; gap: 12rpx; padding: 24rpx 0; border-bottom: 1rpx solid #e9e5dc; font-size: 24rpx; }
 .metadata-value, .metadata-row .mono { white-space: pre-wrap; word-break: break-all; }
 .metadata-page .row button { flex: 1; }
+.metadata-page input { box-sizing: border-box; width: 100%; height: 84rpx; padding: 18rpx 22rpx; margin-top: 24rpx; border: 1rpx solid #e4dfd2; border-radius: 12rpx; background: #f8f7f3; color: #242424; font-size: 26rpx; }

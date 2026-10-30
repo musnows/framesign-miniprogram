@@ -19,7 +19,7 @@ export { version as APP_VERSION } from '../package.json'
 export { api, readBytes, fitDimensions, EDITABLE_EXIF_FIELDS, DATE_TIME_FORMAT_OPTIONS, DEFAULT_SIGNATURE }
 export { getDefaultSignatureAnchor, clampSignatureOpacity, clampSignatureWidth, setSignatureWidth, signatureBounds, draggedSignatureWidth } from './shared/lib/editor/signature'
 export { addSavedDateTimeFormat, parseSavedDateTimeFormats } from './shared/lib/editor/savedDateTimeFormats'
-export { formatDateTimeValue } from './shared/lib/editor/exif'
+export { formatDateTimeValue, normalizeExifOverrides } from './shared/lib/editor/exif'
 export { readPhotoMetadata, metadataPage } from './metadata'
 export { photoBrand, withBrandLogos, brandGroups, applyPhotoStyle } from './photo-selection'
 export const templates = ['noProcess', 'standard1', 'standard2', 'logoCentered', 'blurBackground', 'nikonBlur', 'folderNameParams', 'centeredWatermark', 'sidebarWatermark', 'centeredWatermark2', 'personalText'].map(key => (templateDefinitions as any)[key])
@@ -230,7 +230,10 @@ export async function exportFiles(photos: any[], canvas: HTMLCanvasElement, sett
     progress(index, photos.length)
     lastImage = await exportPhoto(photos[index], canvas, settings)
     if (cancelled()) throw new Error('已停止文件导出。')
-    if (photos.length === 1) return { path: lastImage.path, fileName: lastImage.name, count: 1, lastImage }
+    if (photos.length === 1) {
+      const path = await writeBytes(`${wx.env.USER_DATA_PATH}/yingqian-file-export.${lastImage.format}`, await readBytes(lastImage.path))
+      return { path, fileName: lastImage.name, count: 1, lastImage: { ...lastImage, path } }
+    }
     const bytes = await readBytes(lastImage.path)
     totalBytes += bytes.length
     if (totalBytes > 96 * 1024 * 1024) throw new Error('本次文件超过 96 MB，请分批导出，或逐张保存到相册。')
@@ -246,7 +249,7 @@ export async function exportFiles(photos: any[], canvas: HTMLCanvasElement, sett
     progress(photos.length, photos.length, true)
   })
   const fileName = `yingqian-${new Date().toISOString().slice(0, 10)}.zip`
-  const path = await writeBytes(`${wx.env.USER_DATA_PATH}/${fileName}`, bytes)
+  const path = await writeBytes(`${wx.env.USER_DATA_PATH}/yingqian-export.zip`, bytes)
   return { path, fileName, count: photos.length, lastImage }
 }
 

@@ -420,3 +420,54 @@ test('small photographs are not blocked by a mini-program-only hidden-watermark 
   const exported = await core.exportPhoto(photo, target, { format: 'png', preserveExif: false })
   assert.deepEqual([exported.width, exported.height], [300, 300])
 })
+
+test('clearing a manual EXIF field restores the original value as in the web editor', async () => {
+  const { page } = await pageHarness()
+  page.changeExif({ currentTarget: { dataset: { key: 'Model' } }, detail: { value: 'edited model' } })
+  assert.equal(page.currentPhoto().overrides.Model, 'edited model')
+  page.changeExif({ currentTarget: { dataset: { key: 'Model' } }, detail: { value: '  ' } })
+  assert.equal(page.currentPhoto().overrides.Model, undefined)
+  assert.equal(page.data.fields.find(field => field.key === 'Model').value, page.currentPhoto().exif.Model)
+  page.onUnload()
+})
+
+test('file generation and native handoff are separate user actions', async () => {
+  const calls = []
+  const { page } = await pageHarness({ exportFiles: async () => ({ path: sample, fileName: 'photo.jpg', count: 1, lastImage: { path: sample } }), api: async (name, options) => { calls.push({ name, options }); return {} } })
+  await page.exportFile({ currentTarget: { dataset: {} } })
+  assert.equal(calls.length, 0)
+  await page.shareExportFile()
+  assert.equal(calls[0].name, 'shareFileMessage')
+  assert.equal(calls[0].options.fileName, 'photo.jpg')
+  page.onUnload()
+})
+
+test('a generated single-file export remains unchanged by later album exports', async () => {
+  const source = path.join(artifacts, 'stable-export-exif.jpg')
+  await writeFile(source, metadataFixture(await readFile(sample)))
+  const photo = { ...core.createDemo(94), path: source, isDemo: false }
+  const file = await core.exportFiles([photo], target, { format: 'jpg', preserveExif: true })
+  const saved = await readFile(file.path)
+  await core.exportPhoto({ ...photo, path: sample, templateId: 'noProcess' }, target, { format: 'jpg', preserveExif: true })
+  assert.deepEqual(await readFile(file.path), saved)
+  assert.equal((await exifr.parse(saved)).Model, 'NIKON Zf')
+})
+
+test('cancelling detection before analysis starts prevents stale results and allows retry', async () => {
+  let page
+  let calls = 0
+  const implementation = { ...core, api: async () => ({ width: 1080, height: 720 }), detectPhoto: async () => { calls++; return { marker: 'retry marker', confidence: 0.9, blockCount: 20 } }, cancelDetection() {} }
+  runInNewContext(await readFile(path.join(root, 'miniprogram/pages/detect/index.js'), 'utf8'), { Page(value) { page = value }, require: () => implementation, getApp: () => ({ globalData: {} }), setTimeout })
+  page.setData = patch => Object.assign(page.data, patch)
+  page.onLoad({})
+  const pending = page.runDetection(sample)
+  page.cancel()
+  await pending
+  assert.equal(calls, 0)
+  assert.equal(page.data.checked, false)
+  await page.retry()
+  assert.equal(calls, 1)
+  assert.equal(page.data.confidence, '90%')
+  assert.equal(page.data.result.marker, 'retry marker')
+  page.onUnload()
+})
