@@ -34,3 +34,8 @@
 .save-current { flex: 1; }
 .export-progress { min-height: 80rpx; font-size: 27rpx; color: #967127; }
 .locked { pointer-events: none; opacity: .65; }
+
+.preview-surface { position: relative; width: 100%; max-width: 660rpx; }
+.signature-drag { position: absolute; box-sizing: border-box; border: 2rpx dashed #c99a35; z-index: 2; }
+.signature-handle { position: absolute; width: 38rpx; height: 38rpx; right: -16rpx; bottom: -16rpx; border-radius: 50%; background: #c99a35; border: 3rpx solid #faf9f6; }
+.numeric { max-width: 160rpx; }

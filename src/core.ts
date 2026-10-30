@@ -9,12 +9,16 @@ import { normalizeParsedExif, EDITABLE_EXIF_FIELDS, DATE_TIME_FORMAT_OPTIONS } f
 import { preserveExportExif, extractExif, normalizeExif } from './shared/lib/editor/exportExif'
 import { filterPhotographyExif } from './shared/lib/editor/photographyExif'
 import { BUILTIN_LOGOS } from './shared/lib/editor/builtinLogos'
+import { configurationControls } from './editor-config'
 import { Blob, TextEncoder, insertPngExif } from './binary'
 import { api, readBytes, writeBytes, installPlatform, releaseCanvases, fitDimensions } from './platform'
 
 declare const wx: any
 export { version as APP_VERSION } from '../package.json'
 export { api, readBytes, fitDimensions, EDITABLE_EXIF_FIELDS, DATE_TIME_FORMAT_OPTIONS, DEFAULT_SIGNATURE }
+export { getDefaultSignatureAnchor, clampSignatureOpacity, clampSignatureWidth, setSignatureWidth, signatureBounds, draggedSignatureWidth } from './shared/lib/editor/signature'
+export { addSavedDateTimeFormat, parseSavedDateTimeFormats } from './shared/lib/editor/savedDateTimeFormats'
+export { formatDateTimeValue } from './shared/lib/editor/exif'
 export const templates = ['noProcess', 'standard1', 'standard2', 'logoCentered', 'blurBackground', 'nikonBlur', 'folderNameParams', 'centeredWatermark', 'sidebarWatermark', 'centeredWatermark2', 'personalText'].map(key => (templateDefinitions as any)[key])
 export const logos = BUILTIN_LOGOS.map(logo => ({ ...logo, path: logo.path.replace(/\.svg$/, '.png') })).filter((logo, index, list) => list.findIndex(item => item.path === logo.path) === index)
 export const defaultExport = { maxSide: 2048, format: 'jpg', preserveExif: true, photographyOnly: false }
@@ -61,7 +65,8 @@ function exclusive<T>(task: () => Promise<T>): Promise<T> {
 }
 
 export function template(id: string) { return templates.find(item => item.id === id) || templates[1] }
-export function defaults(id: string) { return { ...getTemplateDefaultConfig(template(id)), personalText: 'PHOTOGRAPHED BY YOU' } }
+export function defaults(id: string) { return getTemplateDefaultConfig(template(id)) }
+export function templateControls(id: string, config: Record<string, any>) { return configurationControls(template(id), config) }
 export function markerBytes(marker: string) { return new TextEncoder().encode(String(marker).trim()).length }
 
 export function validateConfig(config: Record<string, any>) {
@@ -200,7 +205,7 @@ export function importSignature(canvas: HTMLCanvasElement) {
       const bytes = await readBytes(path)
       if (bytes.length > 10 * 1024 * 1024 || Array.from(bytes.subarray(0, 8)).join(',') !== '137,80,78,71,13,10,26,10') throw new Error('请选择 10 MB 以内的透明 PNG 签名。')
       const image = await loadImage(path)
-      if (image.width * image.height > 4000000) throw new Error('签名图片过大，请使用 400 万像素以内的 PNG。')
+      if (image.width * image.height > 16000000) throw new Error('签名图片过大，请使用 1600 万像素以内的 PNG。')
       const source = createCanvas(image.width, image.height)
       source.getContext('2d')!.drawImage(image, 0, 0)
       const data = source.getContext('2d')!.getImageData(0, 0, source.width, source.height).data

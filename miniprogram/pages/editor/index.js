@@ -17,7 +17,7 @@ Page({
     signaturePositions: ['跟随模板', '自定义位置'], signatureMasks: ['自动适配颜色', '保留原色', '自定义颜色'], signatureMaskIndex: 0,
     signatureAnchors: ['参数旁', '相机型号旁'], signatureAnchorIndex: 0,
     textPositions: ['底部居中', '顶部居中', '左下角', '右下角'], textPositionIndex: 0,
-    config: {}, options: {}, labels: {}, signature: { ...core.DEFAULT_SIGNATURE }, fields: [], rawFields: [], showRaw: false,
+    config: {}, options: {}, labels: {}, controls: [], savedDateFormats: [], datePreview: '', signatureBox: '', signature: { ...core.DEFAULT_SIGNATURE }, fields: [], rawFields: [], showRaw: false,
     preview: '', previewWidth: 0, previewHeight: 0, rendering: false, importing: false, exporting: false,
     error: '', notice: '', progress: '', savedCount: 0, needsPermission: false, markerLength: 0
   },
@@ -30,6 +30,7 @@ Page({
     const saved = app.preferences || {}
     const settings = { ...core.defaultExport, ...saved.settings }
     this.setData({ settings, sizeIndex: Math.max(0, [1280, 2048, 2560].indexOf(settings.maxSide)), formatIndex: settings.format === 'png' ? 1 : 0, notice: (app.importFailures || []).join('\n') })
+    this.setData({ savedDateFormats: core.parseSavedDateTimeFormats(JSON.stringify(saved.dateFormats || [])) })
     this.refreshPhoto()
   },
   onReady() {
@@ -56,18 +57,52 @@ Page({
     this.setData({
       photos: this.photos.map(item => ({ id: item.id, path: item.path, name: item.name })),
       photoName: photo.name, isDemo: !!photo.isDemo, sourceSize: `${photo.width} × ${photo.height}`,
-      config, signature, options: core.template(photo.templateId).userOptions, templateId: photo.templateId,
+      config, signature, controls: core.templateControls(photo.templateId, config), datePreview: core.formatDateTimeValue(exif.DateTimeOriginal || '2026-10-12 14:30:45', config.dateTimeFormat, config.customDateTimeFormat), options: core.template(photo.templateId).userOptions, templateId: photo.templateId,
       labels: Object.fromEntries(['imageMargin', 'watermarkScale', 'borderRadius', 'blurRadius', 'nikonZScale'].map(key => [key, Math.round(Number(config[key]) * 100)]).concat([['signatureWidth', Math.round(signature.width * 100)]])),
       templateName: core.template(photo.templateId).name,
-      fields: core.EDITABLE_EXIF_FIELDS.map((field, index) => ({ ...field, value: String(exif[field.key] || ''), showKey: displayKeys[index], visible: config[displayKeys[index]] !== false })),
+      fields: core.EDITABLE_EXIF_FIELDS.map((field, index) => ({ ...field, value: String(exif[field.key] || ''), showKey: displayKeys[index], visible: config[displayKeys[index]] !== false, supported: Object.prototype.hasOwnProperty.call(core.template(photo.templateId).userOptions.exifFields || {}, displayKeys[index]) })),
       rawFields: Object.entries(photo.rawExif || {}).filter(([, value]) => typeof value !== 'object' || value instanceof Date).map(([key, value]) => ({ key, value: String(value).slice(0, 1000) })),
       dateIndex: Math.max(0, dateFormats.findIndex(item => item.value === config.dateTimeFormat)),
       logoIndex: Math.max(0, this.data.logos.findIndex(item => item.path === config.customLogoUrl)),
       signatureMaskIndex: Math.max(0, ['auto', 'original', 'custom'].indexOf(signature.mask)),
-      signatureAnchorIndex: signature.anchor === 'camera' ? 1 : 0,
+      signatureAnchorIndex: (signature.anchor || core.getDefaultSignatureAnchor(core.template(photo.templateId).processors)) === 'camera' ? 1 : 0,
       textPositionIndex: Math.max(0, ['bottom-center', 'top-center', 'left-bottom', 'right-bottom'].indexOf(config.textPosition)),
       markerLength: core.markerBytes(config.hiddenWatermarkText || ''), metadataWarning: photo.metadataWarning || ''
     })
+  },
+  resetConfigField(event) {
+    if (this.data.exporting) return
+    const key = event.currentTarget.dataset.key
+    this.currentPhoto().config[key] = core.defaults(this.currentPhoto().templateId)[key]
+    this.refreshPhoto(); this.requestPreview()
+  },
+  resetTemplate() {
+    if (this.data.exporting) return
+    const photo = this.currentPhoto()
+    photo.config = { ...core.defaults(photo.templateId), ...(photo.config.signature ? { signature: photo.config.signature } : {}) }
+    this.refreshPhoto(); this.requestPreview()
+  },
+  resetConfigGroup(event) {
+    if (this.data.exporting) return
+    const keys = event.currentTarget.dataset.group === 'text'
+      ? ['personalText', 'textMargin', 'textFontSize', 'textOpacity', 'textPosition', 'textColor']
+      : ['logoEnabled', ...displayKeys, 'dateTimeFormat', 'customDateTimeFormat']
+    const defaults = core.defaults(this.currentPhoto().templateId)
+    for (const key of keys) this.currentPhoto().config[key] = defaults[key]
+    this.refreshPhoto(); this.requestPreview()
+  },
+  saveDateFormat() {
+    const format = String(this.currentPhoto().config.customDateTimeFormat || '').trim()
+    if (!format) return
+    const dateFormats = core.addSavedDateTimeFormat(this.data.savedDateFormats, format)
+    const preferences = { ...(getApp().globalData.preferences || {}), dateFormats }
+    getApp().globalData.preferences = preferences
+    wx.setStorageSync(STORAGE.preferences, preferences)
+    this.setData({ savedDateFormats: dateFormats })
+  },
+  applyDateFormat(event) {
+    Object.assign(this.currentPhoto().config, { dateTimeFormat: 'custom', customDateTimeFormat: event.currentTarget.dataset.format })
+    this.refreshPhoto(); this.requestPreview()
   },
   requestPreview() {
     const version = ++this.renderVersion
@@ -125,25 +160,82 @@ Page({
     this.setData({ importing: true, error: '' })
     try {
       const signature = await core.importSignature(this.canvas)
-      this.currentPhoto().config.signature = signature
-      getApp().globalData.signature = { ...signature }
-      wx.setStorageSync(STORAGE.signature, signature)
+      this.currentPhoto().config.signature = { ...this.data.signature, dataUrl: signature.dataUrl, name: signature.name, aspectRatio: signature.aspectRatio, enabled: true }
+      getApp().globalData.signature = { ...this.currentPhoto().config.signature }
+      wx.setStorageSync(STORAGE.signature, this.currentPhoto().config.signature)
       this.refreshPhoto(); this.requestPreview()
     } catch (error) { if (!/cancel/i.test(error.errMsg || '')) this.setData({ error: error.message || '签名读取失败，请选择透明 PNG。' }) }
     finally { if (!this.unloaded) this.setData({ importing: false }) }
   },
   changeSignature(event) {
+    if (this.data.exporting || this.data.importing) return
     const key = event.currentTarget.dataset.key
     let value = event.detail.value
+    if (['width', 'opacity'].includes(key) && !String(value).trim()) return
     if (event.currentTarget.dataset.scale) value = Number(value) / Number(event.currentTarget.dataset.scale)
     if (key === 'position') value = Number(value) === 0 ? 'template' : 'custom'
     if (key === 'mask') value = ['auto', 'original', 'custom'][Number(value)]
     if (key === 'anchor') value = Number(value) === 0 ? 'params' : 'camera'
-    this.currentPhoto().config.signature = { ...this.data.signature, [key]: value }
+    if (key === 'opacity') value = core.clampSignatureOpacity(Number(value))
+    this.currentPhoto().config.signature = key === 'width' ? core.setSignatureWidth(this.data.signature, Number(value)) : { ...this.data.signature, [key]: value }
     getApp().globalData.signature = { ...this.currentPhoto().config.signature }
     wx.setStorageSync(STORAGE.signature, this.currentPhoto().config.signature)
     this.refreshPhoto(); this.requestPreview()
   },
+  removeSignature() {
+    if (this.data.exporting || this.data.importing) return
+    this.currentPhoto().config.signature = undefined
+    getApp().globalData.signature = null
+    wx.setStorageSync(STORAGE.signature, null)
+    this.refreshPhoto(); this.requestPreview()
+  },
+  resetSignatureLayout() {
+    Object.assign(this.currentPhoto().config.signature, { position: 'template', anchor: undefined, width: core.DEFAULT_SIGNATURE.width, x: core.DEFAULT_SIGNATURE.x, y: core.DEFAULT_SIGNATURE.y })
+    this.refreshPhoto(); this.requestPreview()
+  },
+  measurePreview() {
+    wx.createSelectorQuery().select('#photo-preview').boundingClientRect(rect => {
+      if (!rect || this.unloaded) return
+      this.previewRect = rect
+      this.updateSignatureBox(this.data.signature)
+    }).exec()
+  },
+  updateSignatureBox(signature) {
+    if (!this.previewRect) return
+    const { width, height } = this.previewRect
+    const box = core.signatureBounds(signature, width, height)
+    this.setData({ signatureBox: 'left:' + box.x / width * 100 + '%;top:' + box.y / height * 100 + '%;width:' + box.width / width * 100 + '%;height:' + box.height / height * 100 + '%' })
+  },
+  startSignatureGesture(event) {
+    if (!this.previewRect || this.data.exporting || this.data.rendering || !event.touches.length) return
+    const touch = event.touches[0]
+    const { width, height } = this.previewRect
+    const box = core.signatureBounds(this.data.signature, width, height)
+    this.signatureGesture = { mode: event.currentTarget.dataset.mode, x: touch.clientX, y: touch.clientY, signature: { ...this.data.signature, x: box.x / width, y: box.y / height, width: box.width / width } }
+  },
+  moveSignatureGesture(event) {
+    if (!this.signatureGesture || !event.touches.length) return
+    const touch = event.touches[0]
+    const gesture = this.signatureGesture
+    const { width, height } = this.previewRect
+    const signature = { ...gesture.signature, position: 'custom' }
+    if (gesture.mode === 'resize') signature.width = core.draggedSignatureWidth(signature, touch.clientX - gesture.x, touch.clientY - gesture.y, width, height)
+    else { signature.x += (touch.clientX - gesture.x) / width; signature.y += (touch.clientY - gesture.y) / height }
+    const box = core.signatureBounds(signature, width, height)
+    Object.assign(signature, { x: box.x / width, y: box.y / height, width: box.width / width })
+    this.gestureDraft = signature
+    this.updateSignatureBox(signature)
+  },
+  finishSignatureGesture() {
+    if (this.gestureDraft) {
+      this.currentPhoto().config.signature = this.gestureDraft
+      getApp().globalData.signature = { ...this.gestureDraft }
+      wx.setStorageSync(STORAGE.signature, this.gestureDraft)
+      this.refreshPhoto(); this.requestPreview()
+    }
+    this.signatureGesture = null; this.gestureDraft = null
+  },
+  cancelSignatureGesture() { this.signatureGesture = null; this.gestureDraft = null; this.updateSignatureBox(this.data.signature) },
   changeSetting(event) {
     const key = event.currentTarget.dataset.key
     let value = event.detail.value
@@ -151,8 +243,9 @@ Page({
     if (key === 'format') value = Number(value) === 0 ? 'jpg' : 'png'
     const settings = { ...this.data.settings, [key]: value }
     this.setData({ settings, sizeIndex: [1280, 2048, 2560].indexOf(settings.maxSide), formatIndex: settings.format === 'png' ? 1 : 0 })
-    getApp().globalData.preferences = { settings }
-    wx.setStorageSync(STORAGE.preferences, { settings })
+    const preferences = { ...(getApp().globalData.preferences || {}), settings }
+    getApp().globalData.preferences = preferences
+    wx.setStorageSync(STORAGE.preferences, preferences)
   },
   async addPhotos() {
     if (this.data.exporting || this.data.importing || this.photos.length >= 9) return

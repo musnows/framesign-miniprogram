@@ -231,3 +231,56 @@ test('cancel stops a batch between photos without discarding completed exports',
   assert.match(page.data.notice, /1/)
   page.onUnload()
 })
+
+test('template controls expose web parameters with their original bounds and defaults', () => {
+  const controls = core.templates.flatMap(item => core.templateControls(item.id, core.defaults(item.id)))
+  for (const key of ['secondaryTextColor', 'padding', 'showBorder', 'borderColor', 'shadowColor', 'shadowRadius', 'textMargin']) assert.ok(controls.some(item => item.key === key), key)
+  for (const [key, min, max, step, scale] of [['padding', 0, 80, 1, 1000], ['imageMargin', 40, 220, 1, 1000], ['watermarkScale', 80, 100, 1, 100], ['blurRadius', 0, 120, 1, 1000], ['textOpacity', 0, 100, 1, 100]]) {
+    const field = controls.find(item => item.key === key)
+    assert.deepEqual([field.min, field.max, field.step, field.scale], [min, max, step, scale])
+  }
+  assert.equal(core.templateControls('noProcess', core.defaults('noProcess')).length, 0)
+  assert.equal(core.defaults('personalText').personalText, core.template('personalText').userOptions.personalText.text)
+})
+
+test('signature resizing activates free positioning and supports invisible or full-width signatures', async () => {
+  const { page } = await pageHarness()
+  page.currentPhoto().config.signature = { ...core.DEFAULT_SIGNATURE, dataUrl: 'local-signature.png' }
+  page.refreshPhoto()
+  const event = (key, value) => ({ currentTarget: { dataset: { key, scale: 100 } }, detail: { value } })
+  page.changeSignature(event('width', 100))
+  assert.equal(page.currentPhoto().config.signature.position, 'custom')
+  assert.equal(page.currentPhoto().config.signature.width, 1)
+  page.changeSignature(event('opacity', 0))
+  assert.equal(page.currentPhoto().config.signature.opacity, 0)
+  page.changeSignature(event('width', 25))
+  Object.assign(page.currentPhoto().config.signature, { x: 0.1, y: 0.1 })
+  page.refreshPhoto()
+  page.data.rendering = false
+  page.previewRect = { width: 300, height: 200 }
+  page.startSignatureGesture({ currentTarget: { dataset: { mode: 'move' } }, touches: [{ clientX: 20, clientY: 20 }] })
+  page.moveSignatureGesture({ touches: [{ clientX: 800, clientY: 800 }] })
+  page.finishSignatureGesture()
+  const box = core.signatureBounds(page.currentPhoto().config.signature, 300, 200)
+  assert.deepEqual([box.x, box.y, box.width, box.height], [225, 175, 75, 25])
+  page.resetSignatureLayout()
+  assert.equal(page.currentPhoto().config.signature.width, core.DEFAULT_SIGNATURE.width)
+  page.removeSignature()
+  assert.equal(page.currentPhoto().config.signature, undefined)
+  page.onUnload()
+})
+
+test('template resets preserve signature while saved date patterns survive export setting changes', async () => {
+  const { page, app } = await pageHarness()
+  const signature = { ...core.DEFAULT_SIGNATURE, dataUrl: 'signature.png' }
+  page.currentPhoto().config.signature = signature
+  page.currentPhoto().config.customDateTimeFormat = 'YYYY年MM月DD日'
+  page.saveDateFormat()
+  page.changeSetting({ currentTarget: { dataset: { key: 'format' } }, detail: { value: 1 } })
+  assert.deepEqual(Array.from(app.globalData.preferences.dateFormats), ['YYYY年MM月DD日'])
+  page.currentPhoto().config.textColor = '#ff0000'
+  page.resetTemplate()
+  assert.equal(page.currentPhoto().config.signature, signature)
+  assert.equal(page.currentPhoto().config.textColor, core.defaults(page.currentPhoto().templateId).textColor)
+  page.onUnload()
+})
