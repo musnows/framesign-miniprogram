@@ -1,12 +1,19 @@
 import { DevServer } from '@open-wxa/wxa-runner-core'
+import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
-import { readFile, writeFile } from 'node:fs/promises'
+import { copyFile, cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { metadataFixture } from './metadata-fixture.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const config = JSON.parse(await readFile(process.argv[2], 'utf8'))
 const directory = path.join(root, '.ai-docs/miniprogram')
+const project = path.join(directory, 'runtime-package')
+await mkdir(project, { recursive: true })
+await cp(path.join(root, 'miniprogram'), project, { recursive: true, filter: source => !/^project\.(?:private\.)?config\.json$/.test(path.basename(source)) })
+await copyFile(path.join(root, 'project.config.example.json'), path.join(project, 'project.config.json'))
+await writeFile(path.join(project, 'assets/parity-source.jpg'), metadataFixture(await readFile(path.join(root, 'assets/sample.jpg'))))
 const origins = new Set(config.devices.map(device => `http://127.0.0.1:${device.port}`))
 const reports = createServer(async (request, response) => {
   if (origins.has(request.headers.origin)) response.setHeader('Access-Control-Allow-Origin', request.headers.origin)
@@ -26,11 +33,12 @@ const reports = createServer(async (request, response) => {
 })
 await new Promise(resolve => reports.listen(config.reporterPort, '127.0.0.1', resolve))
 const servers = []
+process.env.WXA_TEST_REVISION = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 for (const device of config.devices) {
   process.env.WXA_DEVICE_ID = String(device.width)
   process.env.WXA_REPORT_URL = `http://127.0.0.1:${config.reporterPort}/report`
   const server = new DevServer({
-    projectPath: path.join(root, 'miniprogram'), host: '127.0.0.1', port: device.port, watch: false,
+    projectPath: project, host: '127.0.0.1', port: device.port, watch: false,
     device: { screenWidth: device.width, screenHeight: device.height, statusBarHeight: device.width === 320 ? 20 : 44, safeAreaBottom: device.width === 320 ? 0 : 34 },
     setup: path.join(root, 'tests/miniprogram.wxa.setup.mjs'), forwardConsole: 'all'
   })
