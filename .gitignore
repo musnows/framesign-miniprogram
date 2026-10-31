@@ -14,3 +14,5 @@ miniprogram/assets/
 miniprogram/workers/
 miniprogram/project.config.json
 miniprogram/project.private.config.json
+/project.config.json
+/project.private.config.json
