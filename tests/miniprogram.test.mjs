@@ -280,6 +280,23 @@ test('missing camera metadata remains visible and file properties are not counte
   assert.equal(metadataPage.data.metadataWarning, photo.metadataWarning)
 })
 
+test('lens metadata never substitutes for a missing camera brand or model', async () => {
+  const image = await readFile(sample)
+  const payload = Buffer.from('http://ns.adobe.com/xap/1.0/\0<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:exif="http://ns.adobe.com/exif/1.0/" exif:LensMake="VILTROX" exif:LensModel="AF 56/1.7 XF" /></rdf:RDF></x:xmpmeta>')
+  const header = Buffer.from([0xff, 0xe1, 0, 0])
+  header.writeUInt16BE(payload.length + 2, 2)
+  const bytes = cameraFixture(Buffer.concat([image.subarray(0, 2), header, payload, image.subarray(2)]), { make: '', model: '' })
+  const file = path.join(artifacts, 'lens-only-metadata.jpg')
+  await writeFile(file, bytes)
+  chosen = [{ tempFilePath: file }]
+  const photo = (await core.importPhotos()).photos[0]
+  assert.equal(photo.exif.LensMake, 'VILTROX')
+  assert.equal(photo.exif.LensModel, 'AF 56/1.7 XF')
+  assert.ok(!photo.exif.Make && !photo.exif.Model)
+  assert.equal(core.brandGroups([photo])[0].brand, '')
+  assert.match(photo.metadataWarning, /未读到相机品牌、型号/)
+})
+
 test('imported metadata survives later changes to temporary JPEGs and export snapshots', async () => {
   const pixels = await readFile(sample)
   for (const [make, model] of [['NIKON', 'NIKON Zf'], ['FUJIFILM', 'X-T30 III']]) {
