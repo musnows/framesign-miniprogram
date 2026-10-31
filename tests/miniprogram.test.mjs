@@ -191,6 +191,88 @@ function pageHarness(overrides = {}) {
   })
 }
 
+const colorModule = { exports: {} }
+runInNewContext(await readFile(path.join(root, 'miniprogram/components/color-picker/color.js'), 'utf8'), { module: colorModule })
+const { parseColor, formatColor } = colorModule.exports
+async function colorPickerHarness(value = '#242424', allowAlpha = false) {
+  let definition
+  runInNewContext(await readFile(path.join(root, 'miniprogram/components/color-picker/index.js'), 'utf8'), { Component(value) { definition = value }, require: () => colorModule.exports })
+  const changes = []
+  const component = {
+    ...definition.methods, data: structuredClone(definition.data), properties: { value, allowAlpha, disabled: false },
+    setData(patch) { Object.assign(this.data, structuredClone(patch)) },
+    triggerEvent(name, detail) { changes.push({ name, ...detail }) }
+  }
+  definition.lifetimes.attached.call(component)
+  return { component, changes, synchronize(next) { component.properties.value = next; definition.observers['value, allowAlpha'].call(component, next) } }
+}
+
+test('RGB color parsing covers template defaults, HEX, percentages and transparent colors', () => {
+  for (const template of core.templates) {
+    for (const control of core.templateControls(template.id, core.defaults(template.id)).filter(control => control.type === 'color')) assert.ok(parseColor(control.value), `${template.id}: ${control.key}`)
+  }
+  for (const [value, expected] of [['#abc', '#AABBCC'], ['rgb(50%, 0%, 100%)', '#8000FF'], ['rgb(12 34 56 / 25%)', 'rgba(12, 34, 56, 0.25)'], ['rgba(30, 40, 50, 0)', 'rgba(30, 40, 50, 0)'], ['black', '#000000'], ['transparent', 'rgba(0, 0, 0, 0)'], ['#1234', 'rgba(17, 34, 51, 0.267)'], ['#12345680', 'rgba(18, 52, 86, 0.502)']]) assert.equal(formatColor(parseColor(value)), expected)
+  for (const value of ['', '#12', '#GGGGGG', 'rgb(1, two, 3)', 'rgba(1, 2)', 'rgb(NaN, 0, 0)']) assert.equal(parseColor(value), null)
+})
+
+test('RGB picker previews channel drags and commits without losing shadow opacity', async () => {
+  const { component, changes, synchronize } = await colorPickerHarness('rgba(0,0,0,0.15)', true)
+  const channel = (key, value) => ({ currentTarget: { dataset: { channel: key } }, detail: { value } })
+  component.toggle()
+  component.previewChannel(channel('r', 128))
+  assert.equal(component.data.preview, 'rgba(128, 0, 0, 0.15)')
+  assert.equal(changes.length, 0)
+  component.changeChannel(channel('r', 128))
+  assert.deepEqual(changes, [{ name: 'change', value: 'rgba(128, 0, 0, 0.15)' }])
+  synchronize(changes[0].value)
+  assert.equal(component.data.expanded, true)
+  component.changeChannel(channel('a', 0))
+  assert.equal(changes.at(-1).value, 'rgba(128, 0, 0, 0)')
+  component.selectSwatch({ currentTarget: { dataset: { color: '#FFFFFF' } } })
+  assert.equal(changes.at(-1).value, 'rgba(255, 255, 255, 0)')
+  synchronize('#242424')
+  assert.equal(component.data.preview, '#242424')
+  assert.equal(component.data.opacity, 100)
+  assert.equal(component.data.channels[0].value, 36)
+  assert.equal(component.data.showAlpha, true)
+})
+
+test('RGB picker rejects invalid edits, clamps channels and honors disabled state', async () => {
+  const { component, changes } = await colorPickerHarness()
+  component.commitInput({ detail: { value: 'not a color' } })
+  assert.ok(component.data.error)
+  assert.equal(component.data.preview, '#242424')
+  assert.equal(changes.length, 0)
+  component.commitInput({ detail: { value: 'rgb(256, -10, 12)' } })
+  assert.equal(changes.at(-1).value, '#FF000C')
+  assert.equal(component.data.error, '')
+  component.changeChannel({ currentTarget: { dataset: { channel: 'g' } }, detail: { value: '' } })
+  assert.equal(changes.length, 1)
+  component.properties.disabled = true
+  component.toggle()
+  component.commitInput({ detail: { value: '#FFFFFF' } })
+  component.changeChannel({ currentTarget: { dataset: { channel: 'a' } }, detail: { value: 50 } })
+  component.selectSwatch({ currentTarget: { dataset: { color: '#FFFFFF' } } })
+  assert.equal(component.data.expanded, false)
+  assert.equal(changes.length, 1)
+})
+
+test('picker colors reach photo styles, reset to defaults and apply without overwriting EXIF', async () => {
+  const { page } = await pageHarness()
+  page.selectTemplate({ currentTarget: { dataset: { id: 'blurBackground' } } })
+  const { component, changes } = await colorPickerHarness(page.data.config.shadowColor, true)
+  component.changeChannel({ currentTarget: { dataset: { channel: 'b' } }, detail: { value: 120 } })
+  page.changeConfig({ currentTarget: { dataset: { key: 'shadowColor' } }, detail: { value: changes.at(-1).value } })
+  page.photos[1].overrides.Model = 'KEEP ORIGINAL OVERRIDE'
+  await page.applyToAll()
+  assert.equal(page.photos[1].config.shadowColor, page.currentPhoto().config.shadowColor)
+  assert.equal(page.photos[1].overrides.Model, 'KEEP ORIGINAL OVERRIDE')
+  assert.equal(parseColor(page.data.config.shadowColor).b, 120)
+  page.resetConfigField({ currentTarget: { dataset: { key: 'shadowColor' } } })
+  assert.equal(page.data.config.shadowColor, core.defaults('blurBackground').shadowColor)
+  page.onUnload()
+})
+
 test('apply to all copies styles while retaining per-photo EXIF overrides', async () => {
   const { page, app } = await pageHarness()
   app.globalData.photos[0].overrides.Model = 'FIRST'

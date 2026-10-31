@@ -1,0 +1,22 @@
+<view class="color-picker">
+  <view class="color-summary">
+    <input class="color-value mono" value="{{inputValue}}" disabled="{{disabled}}" maxlength="64" aria-label="{{label}}颜色值" bindblur="commitInput" bindconfirm="commitInput" />
+    <button class="color-toggle" disabled="{{disabled}}" aria-label="{{label}} RGB 调色" bindtap="toggle"><view class="color-swatch"><view class="color-fill" style="background-color: {{preview}};"></view></view><text class="mono">RGB</text></button>
+  </view>
+  <view wx:if="{{error}}" class="color-error">{{error}}</view>
+  <view wx:if="{{expanded}}" class="color-panel">
+    <view class="color-hint">RGB 调色 · 0–255</view>
+    <view wx:for="{{channels}}" wx:key="key" class="color-channel">
+      <text class="channel-label mono" style="color: {{item.color}};">{{item.label}}</text>
+      <slider class="channel-slider" min="0" max="255" step="1" value="{{item.value}}" activeColor="{{item.color}}" block-size="18" disabled="{{disabled}}" data-channel="{{item.key}}" aria-label="{{label}} {{item.label}} 滑块" bindchanging="previewChannel" bindchange="changeChannel" />
+      <input class="channel-number mono" type="number" value="{{item.value}}" maxlength="3" disabled="{{disabled}}" data-channel="{{item.key}}" aria-label="{{label}} {{item.label}} 数值" bindblur="changeChannel" bindconfirm="changeChannel" />
+    </view>
+    <view wx:if="{{showAlpha}}" class="color-channel">
+      <text class="channel-label mono">A</text>
+      <slider class="channel-slider" min="0" max="100" step="1" value="{{opacity}}" activeColor="#B38B39" block-size="18" disabled="{{disabled}}" data-channel="a" aria-label="{{label}}不透明度滑块" bindchanging="previewChannel" bindchange="changeChannel" />
+      <input class="channel-number mono" type="number" value="{{opacity}}" maxlength="3" disabled="{{disabled}}" data-channel="a" aria-label="{{label}}不透明度百分比" bindblur="changeChannel" bindconfirm="changeChannel" />
+    </view>
+    <view wx:if="{{showAlpha}}" class="color-hint">A 为不透明度，0–100%</view>
+    <view class="color-swatches"><button wx:for="{{swatches}}" wx:key="*this" class="preset-swatch" style="background-color: {{item}};" disabled="{{disabled}}" data-color="{{item}}" aria-label="{{label}}使用 {{item}}" bindtap="selectSwatch"></button></view>
+  </view>
+</view>
