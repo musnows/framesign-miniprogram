@@ -8,6 +8,7 @@ export default ({ env }) => ({
       const report = { device: env.WXA_DEVICE_ID, revision: env.WXA_TEST_REVISION, results: [], errors: [], complete: false }
       let api
       let saves = 0
+      let modals = 0
       const sharedFiles = []
       const check = (condition, message) => { if (!condition) throw new Error(message) }
       const until = async (predicate, label, timeout = 30000) => {
@@ -33,7 +34,7 @@ export default ({ env }) => ({
         api = await until(() => window.__wxa_test_api__, 'test API')
         await api.ready
         api.mock('saveImageToPhotosAlbum', () => { saves++; return {} })
-        api.mock('showModal', { confirm: true, cancel: false })
+        api.mock('showModal', () => { modals++; return { confirm: true, cancel: false } })
         api.mock('shareFileMessage', args => { sharedFiles.push(args); return {} })
         await run('home loads with all eleven templates', async () => {
           const data = await api.pageData()
@@ -208,6 +209,50 @@ export default ({ env }) => ({
           check(data.confidence.endsWith('%') && data.blockCount > 0 && data.dimensions.includes('px'), 'Detector details are missing')
           await api.callPageMethod('retry')
           check((await api.pageData()).result?.marker === '映签 本地测试 42', 'Detector retry failed')
+        })
+        await run('oversized photos hide original size and select the supported maximum automatically', async () => {
+          await api.navigateBack()
+          await api.waitForPage('pages/editor/index')
+          api.mock('chooseMessageFile', { tempFiles: [{ path: '/assets/oversized-source.jpg', name: 'oversized-source.jpg', size: 5000000 }] })
+          await api.callPageMethod('addPhotos', { currentTarget: { dataset: { source: 'message' } } })
+          const index = (await api.pageData()).photos.length - 1
+          await api.callPageMethod('selectPhoto', { currentTarget: { dataset: { index } } })
+          await preview()
+          await api.callPageMethod('changeSetting', event('maxSide', 0))
+          await api.callPageMethod('changeSetting', event('format', 0))
+          const data = await api.pageData()
+          check(data.sourceSize === '6000 × 4000', 'Expected the real oversized input')
+          check(!data.sizeLabels.includes('原始尺寸'), 'Unsupported original size is still offered')
+          check(data.sizeLabels[0].includes('最高支持尺寸') && data.sizeIndex === 0, 'Maximum supported size was not selected')
+          check(data.resolutionNotice.includes('最高分辨率'), 'Automatic resize notice is missing')
+        })
+        await run('oversized album exports succeed at the highest supported size without a confirmation prompt', async () => {
+          const before = modals
+          await api.callPageMethod('savePhotos', { currentTarget: { dataset: {} } })
+          const data = await api.pageData()
+          check(!data.error && data.savedCount === 1 && data.lastExport.autoAdjusted, 'Oversized photo did not export automatically: ' + data.error)
+          check(data.lastExport.width * data.lastExport.height <= 16000000 && Math.max(data.lastExport.width, data.lastExport.height) <= 8192, 'Export exceeded canvas limits')
+          check(data.lastExport.width * data.lastExport.height > 15800000, 'Export was unnecessarily reduced to a small preset')
+          check(data.notice.includes('最高分辨率') && modals === before, 'Export asked the user to choose a smaller size')
+        })
+        await run('size choices update across photos and preserve explicit smaller choices', async () => {
+          const largeIndex = (await api.pageData()).photos.length - 1
+          await api.callPageMethod('selectPhoto', { currentTarget: { dataset: { index: 0 } } })
+          check((await preview()).sizeLabels.includes('原始尺寸'), 'Supported original size was removed')
+          await api.callPageMethod('selectPhoto', { currentTarget: { dataset: { index: largeIndex } } })
+          const data = await preview()
+          await api.callPageMethod('changeSetting', event('maxSide', data.sizeValues.indexOf(1280)))
+          await api.callPageMethod('savePhotos', { currentTarget: { dataset: {} } })
+          const reduced = await api.pageData()
+          check(!reduced.error && reduced.lastExport.width === 1280 && !reduced.lastExport.autoAdjusted, 'The selected smaller size was not preserved')
+          await api.callPageMethod('changeSetting', event('maxSide', 0))
+        })
+        await run('oversized file exports explain automatic fitting and remain ready for native handoff', async () => {
+          await api.callPageMethod('exportFile', { currentTarget: { dataset: {} } })
+          const data = await api.pageData()
+          check(!data.error && data.lastFileExport.adjustedCount === 1 && data.lastFileExport.count === 1, 'Automatic file export failed')
+          check(data.notice.includes('最高分辨率') && !data.sizeLabels.includes('原始尺寸'), 'Export result and size choices are inconsistent')
+          await api.callPageMethod('selectTab', { currentTarget: { dataset: { id: 'export' } } })
         })
         await run('no runtime errors or unimplemented native APIs', async () => {
           report.errors = await api.errors()

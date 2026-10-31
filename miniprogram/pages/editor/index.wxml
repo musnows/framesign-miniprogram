@@ -9,6 +9,7 @@
   </view>
   <view class="row preview-caption"><text class="small muted">{{isDemo ? '示例照片' : '轻点查看大图'}} · <text class="mono">{{sourceSize}}</text></text><button class="link small" disabled="{{exporting}}" bindtap="removePhoto">移出</button></view>
   <view wx:if="{{error}}" id="editor-error" class="error feedback">{{error}}</view>
+  <view wx:if="{{resolutionNotice}}" id="resolution-notice" class="notice feedback">{{resolutionNotice}}</view>
   <view wx:if="{{notice}}" id="editor-notice" class="notice feedback">{{notice}}</view>
   <button wx:if="{{needsPermission}}" class="secondary feedback" open-type="openSetting" bindopensetting="permissionChanged">打开设置，允许保存到相册</button>
   <view class="editor-tabs"><button wx:for="{{tabs}}" wx:key="id" id="tab-{{item.id}}" class="editor-tab {{tab === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="selectTab">{{item.name}}</button></view>
@@ -60,7 +61,7 @@
     </block>
     <block wx:elif="{{tab === 'export'}}">
       <view class="section-label">导出设置</view>
-      <view class="field"><text class="field-label">输出尺寸</text><picker range="{{sizeLabels}}" value="{{sizeIndex}}" data-key="maxSide" bindchange="changeSetting"><view class="picker">{{sizeLabels[sizeIndex]}} ⌄</view></picker><view class="hint">默认保留原尺寸和模板成片尺寸。移动端单画布最多处理 1600 万像素、单边 8192 像素；超限会提示选择较小尺寸，不自动降低画质。</view></view>
+      <view class="field"><text class="field-label">输出尺寸</text><picker id="export-size-picker" disabled="{{rendering || exporting}}" range="{{sizeLabels}}" value="{{sizeIndex}}" data-key="maxSide" bindchange="changeSetting"><view class="picker">{{sizeLabels[sizeIndex]}} ⌄</view></picker><view class="hint">{{exportSizeHint}}</view></view>
       <view class="field"><text class="field-label">文件格式</text><picker range="{{formats}}" value="{{formatIndex}}" data-key="format" bindchange="changeSetting"><view class="picker">{{formats[formatIndex]}} ⌄</view></picker></view>
       <view class="field"><view class="row"><text class="field-label">保留原始 EXIF</text><switch color="#d3a239" checked="{{settings.preserveExif}}" data-key="preserveExif" bindchange="changeSetting" /></view><view class="hint">保留相机原始记录；手动编辑的水印文字不写回原始 EXIF。</view></view>
       <view wx:if="{{settings.preserveExif}}" class="field"><view class="row"><text class="field-label">仅保留摄影参数</text><switch color="#d3a239" checked="{{settings.photographyOnly}}" data-key="photographyOnly" bindchange="changeSetting" /></view><view class="hint">去除 GPS、设备序列号、作者、备注等额外信息。</view></view>

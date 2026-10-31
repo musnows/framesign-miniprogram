@@ -359,7 +359,7 @@ test('custom logo import persists an independent local image without changing th
   assert.equal(createHash('sha256').update(await readFile(sample)).digest('hex'), originalHash)
 })
 
-test('original-size export preserves pixels above the previous resolution cap and rejects oversize input explicitly', async () => {
+test('original-size export preserves supported originals and explicit smaller choices', async () => {
   const photo = { ...core.createDemo(91, 'noProcess'), path: path.join(artifacts, 'large-original.jpg'), width: 3000, height: 2000 }
   await sharp(sample).resize(3000, 2000).toFile(photo.path)
   const original = await core.exportPhoto(photo, target, { preserveExif: false })
@@ -367,7 +367,8 @@ test('original-size export preserves pixels above the previous resolution cap an
   assert.equal(original.format, 'jpg')
   const reduced = await core.exportPhoto(photo, target, { maxSide: 1280, preserveExif: false })
   assert.equal(reduced.width, 1280)
-  await assert.rejects(core.exportPhoto({ ...photo, width: 6000, height: 4000 }, target, { preserveExif: false }), /原尺寸/)
+  assert.equal(original.autoAdjusted, false)
+  assert.equal(reduced.autoAdjusted, false)
 })
 
 test('file export creates a valid ZIP with distinct duplicate names, matching formats and preserved metadata', async () => {
@@ -481,4 +482,109 @@ test('removing a selected photo refreshes the batch selection instead of applyin
   assert.equal(page.data.selectionPhotos.length, 1)
   assert.equal(page.data.selectedIds.length, 0)
   page.onUnload()
+})
+
+test('oversized photos automatically export near the highest supported pixel count and retain their original metadata', async () => {
+  const input = path.join(artifacts, 'oversized-6000.jpg')
+  const bytes = await sharp({ create: { width: 6000, height: 4000, channels: 3, background: '#708b64' } }).jpeg().toBuffer()
+  const original = metadataFixture(bytes)
+  await writeFile(input, original)
+  const photo = { ...core.createDemo(101, 'noProcess'), path: input, width: 6000, height: 4000, isDemo: false }
+  const notices = []
+  const result = await core.exportPhoto(photo, target, { preserveExif: true }, message => notices.push(message))
+  assert.equal(result.autoAdjusted, true)
+  assert.ok(result.width * result.height <= core.MAX_CANVAS_PIXELS)
+  assert.ok(result.width * result.height > core.MAX_CANVAS_PIXELS * 0.99)
+  assert.ok(result.width > 4096, 'The highest supported export must not be unnecessarily reduced to a preset')
+  assert.ok(Math.abs(result.width / result.height - 1.5) < 0.001)
+  assert.match(notices[0], /最高分辨率/)
+  const metadata = await sharp(result.path).metadata()
+  assert.deepEqual([metadata.width, metadata.height], [result.width, result.height])
+  assert.equal((await exifr.parse(await readFile(result.path))).Model, 'NIKON Zf')
+  assert.deepEqual(await readFile(input), original)
+  const smaller = await core.exportPhoto(photo, target, { maxSide: 1280, preserveExif: false })
+  assert.equal(smaller.width, 1280)
+  assert.equal(smaller.autoAdjusted, false)
+})
+
+test('wide panoramas automatically obey the edge limit without asking for a new size', async () => {
+  const input = path.join(artifacts, 'wide-9000.jpg')
+  await sharp({ create: { width: 9000, height: 1000, channels: 3, background: '#708b64' } }).jpeg().toFile(input)
+  const photo = { ...core.createDemo(102, 'noProcess'), path: input, width: 9000, height: 1000 }
+  const result = await core.exportPhoto(photo, target, { preserveExif: false })
+  assert.equal(result.width, core.MAX_CANVAS_EDGE)
+  assert.equal(result.autoAdjusted, true)
+  assert.ok(result.height > 900 && result.height < 920)
+})
+
+test('template expansion is included in size choices and automatic export limits', async () => {
+  const input = path.join(artifacts, 'square-4000.jpg')
+  await sharp({ create: { width: 4000, height: 4000, channels: 3, background: '#708b64' } }).jpeg().toFile(input)
+  const photo = { ...core.createDemo(103, 'standard1'), path: input, width: 4000, height: 4000 }
+  const preview = await core.previewPhoto(photo, target)
+  photo.renderMetrics = preview.renderMetrics
+  const choices = core.exportSizeOptions(photo)
+  assert.ok(!choices.sizeLabels.includes('原始尺寸'))
+  assert.match(choices.resolutionNotice, /最高分辨率/)
+  const result = await core.exportPhoto(photo, target, { preserveExif: false })
+  assert.equal(result.autoAdjusted, true)
+  assert.ok(result.width * result.height <= core.MAX_CANVAS_PIXELS)
+  assert.ok(result.width * result.height > core.MAX_CANVAS_PIXELS * 0.98)
+  assert.ok(result.height > 4000, 'The output must not be capped to the smaller source-layer dimensions')
+  photo.templateId = 'noProcess'
+  photo.config = core.defaults('noProcess')
+  assert.equal(core.exportSizeOptions(photo).sizeLabels[0], '原始尺寸')
+})
+
+test('the resolution picker hides unsupported originals and maps filtered choices to stable values', async () => {
+  assert.match(core.exportSizeOptions({ ...core.createDemo(100, 'noProcess'), width: 3000, height: 2000 }, 1280).exportSizeHint, /1280/)
+  const { page } = await pageHarness()
+  Object.assign(page.photos[0], { width: 6000, height: 4000, templateId: 'noProcess', config: core.defaults('noProcess') })
+  page.refreshPhoto()
+  assert.equal(page.data.settings.maxSide, 0)
+  assert.ok(!page.data.sizeLabels.includes('原始尺寸'))
+  assert.match(page.data.sizeLabels[0], /最高支持尺寸/)
+  assert.match(page.data.resolutionNotice, /自动/)
+  const index = page.data.sizeValues.indexOf(4096)
+  assert.ok(index >= 0)
+  page.changeSetting({ currentTarget: { dataset: { key: 'maxSide' } }, detail: { value: index } })
+  assert.equal(page.data.settings.maxSide, 4096)
+  page.selectPhoto({ currentTarget: { dataset: { index: 1 } } })
+  assert.equal(page.data.sizeLabels[0], '原始尺寸')
+  assert.equal(page.data.settings.maxSide, 4096)
+  page.onUnload()
+})
+
+test('album and file exports report automatic adaptation without interrupting a mixed batch', async () => {
+  const { page } = await pageHarness({
+    exportPhoto: async (photo, canvas, settings, notify) => {
+      if (photo.id === 1) notify('超限照片将自动以支持的最高分辨率导出。')
+      return { path: sample, width: 4898, height: 3265, sourceId: photo.id, autoAdjusted: photo.id === 1 }
+    },
+    exportFiles: async () => ({ path: sample, fileName: 'photos.zip', count: 2, adjustedCount: 1, lastImage: { path: sample } })
+  })
+  await page.savePhotos({ currentTarget: { dataset: { all: true } } })
+  assert.equal(page.data.savedCount, 2)
+  assert.equal(page.data.error, '')
+  assert.match(page.data.notice, /1 张超限照片.*最高分辨率/)
+  await page.exportFile({ currentTarget: { dataset: { all: true } } })
+  assert.equal(page.data.error, '')
+  assert.match(page.data.notice, /1 张超限照片.*最高分辨率/)
+  page.onUnload()
+})
+
+test('all templates automatically fit oversized photos using their rendered layout bounds', async t => {
+  const input = path.join(artifacts, 'oversized-template-input.jpg')
+  await sharp({ create: { width: 6000, height: 4000, channels: 3, background: '#708b64' } }).jpeg().toFile(input)
+  for (const definition of core.templates) await t.test(definition.id, async () => {
+    const photo = { ...core.createDemo(110, definition.id), path: input, width: 6000, height: 4000 }
+    photo.renderMetrics = (await core.previewPhoto(photo, target)).renderMetrics
+    assert.ok(!core.exportSizeOptions(photo).sizeLabels.includes('原始尺寸'))
+    const result = await core.exportPhoto(photo, target, { preserveExif: false })
+    assert.equal(result.autoAdjusted, true)
+    assert.ok(result.width * result.height <= core.MAX_CANVAS_PIXELS)
+    assert.ok(Math.max(result.width, result.height) <= core.MAX_CANVAS_EDGE)
+    const metadata = await sharp(result.path).metadata()
+    assert.deepEqual([metadata.width, metadata.height], [result.width, result.height])
+  })
 })

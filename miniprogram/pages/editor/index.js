@@ -12,7 +12,7 @@ Page({
     templates: core.templates.map(item => ({ id: item.id, name: item.name })),
     logos: [{ name: '自动识别相机品牌', path: '' }, ...core.logos],
     dateFormats, dateIndex: 0, logoIndex: 0,
-    settings: { ...core.defaultExport }, sizeLabels: ['原始尺寸', '1280 px · 轻量', '2048 px', '2560 px', '4096 px'], sizeIndex: 0,
+    settings: { ...core.defaultExport }, sizeLabels: ['原始尺寸'], sizeValues: [0], sizeIndex: 0, exportSizeHint: '', resolutionNotice: '',
     formats: ['JPEG · 通用照片', 'PNG · 无损画质'], formatIndex: 0,
     signaturePositions: ['跟随模板', '自定义位置'], signatureMasks: ['自动适配颜色', '保留原色', '自定义颜色'], signatureMaskIndex: 0,
     signatureAnchors: ['参数旁', '相机型号旁'], signatureAnchorIndex: 0,
@@ -30,7 +30,7 @@ Page({
     if (!this.photos.length) { wx.redirectTo({ url: '/pages/home/index' }); return }
     const saved = app.preferences || {}
     const settings = { ...core.defaultExport, ...saved.settings }
-    this.setData({ settings, sizeIndex: Math.max(0, [0, 1280, 2048, 2560, 4096].indexOf(settings.maxSide)), formatIndex: settings.format === 'png' ? 1 : 0, notice: (app.importFailures || []).join('\n') })
+    this.setData({ settings, formatIndex: settings.format === 'png' ? 1 : 0, notice: (app.importFailures || []).join('\n') })
     this.setData({ savedDateFormats: core.parseSavedDateTimeFormats(JSON.stringify(saved.dateFormats || [])) })
     this.refreshPhoto()
   },
@@ -49,6 +49,18 @@ Page({
     clearTimeout(this.previewTimer)
   },
   currentPhoto() { return this.photos && this.photos[this.data.activeIndex] },
+  exportSizeData() {
+    return core.exportSizeOptions(core.withBrandLogos(this.currentPhoto(), getApp().globalData.customLogos), this.data.settings.maxSide)
+  },
+  rememberExportResolution(result) {
+    const photo = this.photos.find(item => item.id === result.sourceId)
+    if (photo && result.renderMetrics) photo.renderMetrics = result.renderMetrics
+    if (photo === this.currentPhoto()) this.setData(this.exportSizeData())
+  },
+  adjustmentSummary(count) {
+    if (!count) return ''
+    return this.data.settings.maxSide === 0 ? `其中 ${count} 张超限照片已自动以支持的最高分辨率导出。` : `其中 ${count} 张照片已自动适配导出尺寸。`
+  },
   refreshPhoto() {
     const photo = this.currentPhoto()
     if (!photo) return
@@ -58,6 +70,7 @@ Page({
     const selected = new Set(this.data.selectedIds.map(String))
     const photoItems = this.photos.map(item => ({ id: item.id, path: item.path, name: item.name, selected: selected.has(String(item.id)) }))
     this.setData({
+      ...this.exportSizeData(),
       photos: photoItems, selectionPhotos: photoItems, selectedIds: photoItems.filter(item => item.selected).map(item => String(item.id)),
       brands: core.brandGroups(this.photos, getApp().globalData.customLogos).map(item => ({ ...item, logoIndex: Math.max(0, this.data.logos.findIndex(logo => logo.path === item.path)) })),
       photoName: photo.name, isDemo: !!photo.isDemo, sourceSize: `${photo.width} × ${photo.height}`,
@@ -117,7 +130,10 @@ Page({
       if (this.unloaded || version !== this.renderVersion) return
       try {
         const result = await core.previewPhoto(core.withBrandLogos(this.currentPhoto(), getApp().globalData.customLogos), this.canvas)
-        if (!this.unloaded && version === this.renderVersion) this.setData({ preview: result.path, previewWidth: result.width, previewHeight: result.height, rendering: false })
+        if (!this.unloaded && version === this.renderVersion) {
+          this.currentPhoto().renderMetrics = result.renderMetrics
+          this.setData({ preview: result.path, previewWidth: result.width, previewHeight: result.height, rendering: false, ...this.exportSizeData() })
+        }
       } catch (error) {
         if (!this.unloaded && version === this.renderVersion) this.setData({ rendering: false, error: '预览失败：' + (error.message || '请重新选择照片') })
       }
@@ -259,10 +275,11 @@ Page({
   changeSetting(event) {
     const key = event.currentTarget.dataset.key
     let value = event.detail.value
-    if (key === 'maxSide') value = [0, 1280, 2048, 2560, 4096][Number(value)]
+    if (key === 'maxSide') value = this.data.sizeValues[Number(value)] ?? 0
     if (key === 'format') value = Number(value) === 0 ? 'jpg' : 'png'
     const settings = { ...this.data.settings, [key]: value }
-    this.setData({ settings, sizeIndex: [0, 1280, 2048, 2560, 4096].indexOf(settings.maxSide), formatIndex: settings.format === 'png' ? 1 : 0 })
+    this.setData({ settings, formatIndex: settings.format === 'png' ? 1 : 0 })
+    this.setData(this.exportSizeData())
     const preferences = { ...(getApp().globalData.preferences || {}), settings }
     getApp().globalData.preferences = preferences
     wx.setStorageSync(STORAGE.preferences, preferences)
@@ -328,18 +345,23 @@ Page({
     this.renderVersion++
     this.setData({ exporting: true, rendering: false, error: '', notice: '', savedCount: 0, needsPermission: false, progress: '正在准备导出…' })
     let saved = 0
+    let adjusted = 0
     try {
       for (const photo of photos) {
         if (this.cancelled || this.unloaded) break
         this.setData({ progress: `正在处理 ${saved + 1} / ${photos.length}` })
         await new Promise(resolve => setTimeout(resolve, 30))
-        const result = await core.exportPhoto(photo, this.canvas, this.data.settings)
+        const result = await core.exportPhoto(photo, this.canvas, this.data.settings, message => {
+          if (!this.unloaded) this.setData({ progress: `正在处理 ${saved + 1} / ${photos.length} · ${message}` })
+        })
         if (this.unloaded) break
         await core.api('saveImageToPhotosAlbum', { filePath: result.path })
         saved++
+        if (result.autoAdjusted) adjusted++
+        this.rememberExportResolution(result)
         this.setData({ savedCount: saved, lastExport: result })
       }
-      if (!this.unloaded) this.setData({ notice: this.cancelled ? `已停止，已保存 ${saved} 张照片。` : `已保存 ${saved} 张照片到相册。${skipped ? '跳过 ' + skipped + ' 张未处理照片。' : ''}`, progress: '' })
+      if (!this.unloaded) this.setData({ notice: (this.cancelled ? `已停止，已保存 ${saved} 张照片。` : `已保存 ${saved} 张照片到相册。${skipped ? '跳过 ' + skipped + ' 张未处理照片。' : ''}`) + this.adjustmentSummary(adjusted), progress: '' })
     } catch (error) {
       if (!this.unloaded) {
         const permission = /auth|denied|permission/i.test(error.errMsg || '')
@@ -359,12 +381,13 @@ Page({
     this.setData({ exporting: true, rendering: false, error: '', notice: '', progress: '正在生成文件…' })
     try {
       photos.forEach(photo => core.validateConfig(photo.config))
-      const result = await core.exportFiles(photos, this.canvas, this.data.settings, (current, total, packing) => {
-        if (!this.unloaded) this.setData({ progress: packing ? '正在打包 ZIP…' : '正在处理 ' + (current + 1) + ' / ' + total })
+      const result = await core.exportFiles(photos, this.canvas, this.data.settings, (current, total, packing, resolutionMessage) => {
+        if (!this.unloaded) this.setData({ progress: packing ? '正在打包 ZIP…' : '正在处理 ' + Math.min(current + 1, total) + ' / ' + total + (resolutionMessage ? ' · ' + resolutionMessage : '') })
       }, () => this.cancelled || this.unloaded)
       if (this.unloaded) return
+      this.rememberExportResolution(result.lastImage)
       this.setData({ lastExport: result.lastImage, lastFileExport: result, progress: '' })
-      this.setData({ notice: '已生成 ' + result.count + ' 张照片的导出文件，请点击下方按钮转发文件。' + (skipped ? '跳过 ' + skipped + ' 张未处理照片。' : '') })
+      this.setData({ notice: '已生成 ' + result.count + ' 张照片的导出文件，请点击下方按钮转发文件。' + (skipped ? '跳过 ' + skipped + ' 张未处理照片。' : '') + this.adjustmentSummary(result.adjustedCount) })
     } catch (error) {
       if (!/cancel/i.test(error.errMsg || '')) console.error('[FrameSign] File export failed:', error.errMsg || error.message || String(error))
       if (!this.unloaded) this.setData({ error: /cancel/i.test(error.errMsg || '') ? '' : error.message || '文件导出失败，请更新微信或选择保存到相册。' })

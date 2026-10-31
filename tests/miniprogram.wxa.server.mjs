@@ -5,6 +5,7 @@ import { copyFile, cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { metadataFixture } from './metadata-fixture.mjs'
+import sharp from 'sharp'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const config = JSON.parse(await readFile(process.argv[2], 'utf8'))
@@ -14,6 +15,7 @@ await mkdir(project, { recursive: true })
 await cp(path.join(root, 'miniprogram'), project, { recursive: true, filter: source => !/^project\.(?:private\.)?config\.json$/.test(path.basename(source)) })
 await copyFile(path.join(root, 'project.config.example.json'), path.join(project, 'project.config.json'))
 await writeFile(path.join(project, 'assets/parity-source.jpg'), metadataFixture(await readFile(path.join(root, 'assets/sample.jpg'))))
+await writeFile(path.join(project, 'assets/oversized-source.jpg'), metadataFixture(await sharp(path.join(root, 'assets/sample.jpg')).resize(6000, 4000).jpeg({ quality: 72 }).toBuffer()))
 const origins = new Set(config.devices.map(device => `http://127.0.0.1:${device.port}`))
 const reports = createServer(async (request, response) => {
   if (origins.has(request.headers.origin)) response.setHeader('Access-Control-Allow-Origin', request.headers.origin)

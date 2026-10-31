@@ -1,12 +1,29 @@
 import { configureCanvasPlatform } from './shared/utils/canvas'
+import { canvasScale, CanvasSizeLimitError } from './export-resolution'
 
 declare const wx: any
 const canvases = new Set<HTMLCanvasElement>()
+let measurement: { peakWidth: number; peakHeight: number; peakPixels: number } | undefined
+
+export function startCanvasMeasurement(width: number, height: number) {
+  measurement = { peakWidth: width, peakHeight: height, peakPixels: width * height }
+}
+
+export function stopCanvasMeasurement() {
+  const result = measurement
+  measurement = undefined
+  return result
+}
 
 export function makeCanvas(width: number, height: number): HTMLCanvasElement {
   const w = Math.max(1, Math.ceil(width))
   const h = Math.max(1, Math.ceil(height))
-  if (!Number.isFinite(w * h) || w * h > 16000000 || w > 8192 || h > 8192) throw new Error('Canvas size exceeds the mobile memory limit')
+  if (canvasScale(w, h) < 1) throw new CanvasSizeLimitError(w, h)
+  if (measurement) {
+    measurement.peakWidth = Math.max(measurement.peakWidth, w)
+    measurement.peakHeight = Math.max(measurement.peakHeight, h)
+    measurement.peakPixels = Math.max(measurement.peakPixels, w * h)
+  }
   const canvas = wx.createOffscreenCanvas({ type: '2d', width: w, height: h })
   if (!canvas || !canvas.getContext('2d')) throw new Error('Canvas 2D is unavailable. Update WeChat and try again.')
   canvases.add(canvas)

@@ -12,7 +12,8 @@ import { filterPhotographyExif } from './shared/lib/editor/photographyExif'
 import { BUILTIN_LOGOS } from './shared/lib/editor/builtinLogos'
 import { configurationControls } from './editor-config'
 import { Blob, TextEncoder, insertPngExif } from './binary'
-import { api, readBytes, writeBytes, installPlatform, releaseCanvases, fitDimensions } from './platform'
+import { api, readBytes, writeBytes, installPlatform, releaseCanvases, fitDimensions, startCanvasMeasurement, stopCanvasMeasurement } from './platform'
+import { canvasScale, CanvasSizeLimitError, exportResolution, matchingMetrics, resolutionKey, MAX_CANVAS_PIXELS, EXPORT_PRESETS } from './export-resolution'
 
 declare const wx: any
 export { version as APP_VERSION } from '../package.json'
@@ -22,6 +23,7 @@ export { addSavedDateTimeFormat, parseSavedDateTimeFormats } from './shared/lib/
 export { formatDateTimeValue, normalizeExifOverrides } from './shared/lib/editor/exif'
 export { readPhotoMetadata, metadataPage } from './metadata'
 export { photoBrand, withBrandLogos, brandGroups, applyPhotoStyle } from './photo-selection'
+export { exportSizeOptions, exportResolution, MAX_CANVAS_PIXELS, MAX_CANVAS_EDGE } from './export-resolution'
 export const templates = ['noProcess', 'standard1', 'standard2', 'logoCentered', 'blurBackground', 'nikonBlur', 'folderNameParams', 'centeredWatermark', 'sidebarWatermark', 'centeredWatermark2', 'personalText'].map(key => (templateDefinitions as any)[key])
 export const logos = BUILTIN_LOGOS.map(logo => ({ ...logo, path: logo.path.replace(/\.svg$/, '.png') })).filter((logo, index, list) => list.findIndex(item => item.path === logo.path) === index)
 export const defaultExport = { maxSide: 0, format: 'jpg', preserveExif: true, photographyOnly: false }
@@ -114,18 +116,19 @@ function stepsFor(photo: any, width: number, height: number) {
   return width / height > 1.1 ? processors.landscape : width / height < 0.9 ? processors.portrait : processors.square || processors.portrait
 }
 
-async function render(photo: any, maxSide: number, hidden = false) {
+async function render(photo: any, maxSide: number, hidden = false, outputMaxSide = maxSide, loadedImage?: HTMLImageElement) {
   initialize()
   const config = { ...defaults(photo.templateId), ...photo.config }
   if (hidden) validateConfig(config)
-  const image = await loadImage(photo.path)
-  const dimensions = maxSide === 0 ? { width: image.width, height: image.height } : fitDimensions(image.width, image.height, maxSide, 16000000)
+  const image = loadedImage || await loadImage(photo.path)
+  const dimensions = maxSide === 0 ? { width: image.width, height: image.height } : fitDimensions(image.width, image.height, maxSide, MAX_CANVAS_PIXELS)
   const source = createCanvas(dimensions.width, dimensions.height)
   source.getContext('2d')!.drawImage(image, 0, 0, source.width, source.height)
   const steps = stepsFor(photo, source.width, source.height)
   const context: any = { sourceCanvas: source, buffer: [source], exif: { ...photo.exif, ...photo.overrides }, config }
   const lightText = steps.length === 0 || steps.some((step: any) => step.auto_params || step.processor_name === 'personal_text_overlay')
   context.signature = await prepareSignature(config, config.backgroundColor, lightText, getDefaultSignatureAnchor(steps))
+  startCanvasMeasurement(source.width, source.height)
   for (const step of steps) {
     const Processor = getProcessor(step.processor_name)
     if (!Processor) throw new Error(`Unknown image processor: ${step.processor_name}`)
@@ -134,7 +137,8 @@ async function render(photo: any, maxSide: number, hidden = false) {
     releaseCanvases([source, ...context.buffer, ...(context.signature ? [context.signature.image] : [])])
   }
   let output = finishSignature(context.buffer[context.buffer.length - 1] || source, context.signature)
-  const finalDimensions = maxSide === 0 ? { width: output.width, height: output.height, resized: false } : fitDimensions(output.width, output.height, maxSide, 16000000)
+  const renderMetrics = { key: resolutionKey(photo), sourceWidth: image.width, sourceHeight: image.height, referenceWidth: source.width, referenceHeight: source.height, outputWidth: output.width, outputHeight: output.height, ...stopCanvasMeasurement()! }
+  const finalDimensions = outputMaxSide === 0 ? { width: output.width, height: output.height, resized: false } : fitDimensions(output.width, output.height, outputMaxSide, MAX_CANVAS_PIXELS)
   if (finalDimensions.resized) {
     const resized = createCanvas(finalDimensions.width, finalDimensions.height)
     resized.getContext('2d')!.drawImage(output, 0, 0, resized.width, resized.height)
@@ -147,7 +151,7 @@ async function render(photo: any, maxSide: number, hidden = false) {
     pixels.data.set(new Uint8ClampedArray(embedded.pixels))
     ctx.putImageData(pixels, 0, 0)
   }
-  return output
+  return { canvas: output, renderMetrics }
 }
 
 async function canvasFile(source: HTMLCanvasElement, target: HTMLCanvasElement, format: string) {
@@ -165,10 +169,10 @@ export function previewPhoto(photo: any, canvas: HTMLCanvasElement) {
   const snapshot = JSON.parse(JSON.stringify(photo))
   return exclusive(async () => {
     try {
-      const output = await render(snapshot, 960)
+      const { canvas: output, renderMetrics } = await render(snapshot, 960)
       const path = await canvasFile(output, canvas, 'png')
-      return { path, width: output.width, height: output.height }
-    } finally { releaseCanvases(); canvas.width = 1; canvas.height = 1 }
+      return { path, width: output.width, height: output.height, renderMetrics }
+    } finally { stopCanvasMeasurement(); releaseCanvases(); canvas.width = 1; canvas.height = 1 }
   })
 }
 
@@ -185,15 +189,46 @@ export async function preserveMetadata(output: Uint8Array, source: Uint8Array, o
   return new Uint8Array(await result.arrayBuffer())
 }
 
-export function exportPhoto(photo: any, canvas: HTMLCanvasElement, settings: any = defaultExport) {
+export function exportPhoto(photo: any, canvas: HTMLCanvasElement, settings: any = defaultExport, onResolution: (message: string) => void = () => {}) {
   const snapshot = JSON.parse(JSON.stringify(photo))
   const options = { ...defaultExport, ...settings }
-  options.maxSide = [0, 1280, 2048, 2560, 4096].includes(Number(options.maxSide)) ? Number(options.maxSide) : 0
+  options.maxSide = [0, ...EXPORT_PRESETS].includes(Number(options.maxSide)) ? Number(options.maxSide) : 0
   options.format = options.format === 'png' ? 'png' : 'jpg'
   return exclusive(async () => {
     try {
-      if (options.maxSide === 0 && (snapshot.width * snapshot.height > 16000000 || snapshot.width > 8192 || snapshot.height > 8192)) throw new Error('原尺寸照片超出当前移动端处理范围，请在导出设置中选择较小尺寸后重试。')
-      const output = await render(snapshot, options.maxSide, true)
+      initialize()
+      validateConfig(snapshot.config)
+      const image = await loadImage(snapshot.path)
+      const cached = matchingMetrics(snapshot)
+      if (cached && (cached.sourceWidth !== image.width || cached.sourceHeight !== image.height)) snapshot.renderMetrics = undefined
+      snapshot.width = image.width
+      snapshot.height = image.height
+      if (!matchingMetrics(snapshot) && snapshot.templateId !== 'noProcess') {
+        const probe = await render(snapshot, 960, false, 960, image)
+        snapshot.renderMetrics = probe.renderMetrics
+        releaseCanvases()
+      }
+      const size = exportResolution(snapshot)
+      let sourceMaxSide = Math.min(size.sourceMaxSide, options.maxSide || Infinity)
+      let autoAdjusted = !size.originalSupported && (!options.maxSide || options.maxSide > Math.max(size.width, size.height))
+      const resolutionMessage = options.maxSide ? '正在自动适配所选导出尺寸。' : '超限照片将自动以支持的最高分辨率导出。'
+      if (autoAdjusted) onResolution(resolutionMessage)
+      let rendered: Awaited<ReturnType<typeof render>> | undefined
+      for (let attempt = 0; attempt < 8; attempt++) {
+        try {
+          rendered = await render(snapshot, sourceMaxSide, true, options.maxSide, image)
+          break
+        } catch (error) {
+          stopCanvasMeasurement()
+          releaseCanvases()
+          if (!(error instanceof CanvasSizeLimitError) || sourceMaxSide <= 1) throw error
+          sourceMaxSide = Math.max(1, Math.floor(sourceMaxSide * canvasScale(error.width, error.height)) - 1)
+          autoAdjusted = true
+          onResolution(resolutionMessage)
+        }
+      }
+      if (!rendered) throw new Error('无法生成当前版式，请重试或切换模板。')
+      const output = rendered.canvas
       const width = output.width
       const height = output.height
       let path = await canvasFile(output, canvas, options.format)
@@ -201,11 +236,8 @@ export function exportPhoto(photo: any, canvas: HTMLCanvasElement, settings: any
         const result = await preserveMetadata(await readBytes(path), await readBytes(snapshot.path), options, width, height)
         path = await writeBytes(`${wx.env.USER_DATA_PATH}/yingqian-export.${options.format}`, result)
       }
-      return { path, width, height, format: options.format, name: exportFileName(snapshot.name, options.format) }
-    } catch (error: any) {
-      if (/Canvas size exceeds/.test(error.message || '')) throw new Error('照片或模板成片超出当前移动端画布范围，请选择较小的导出尺寸后重试。')
-      throw error
-    } finally { releaseCanvases(); canvas.width = 1; canvas.height = 1 }
+      return { path, width, height, format: options.format, name: exportFileName(snapshot.name, options.format), sourceId: snapshot.id, autoAdjusted, renderMetrics: rendered.renderMetrics }
+    } finally { stopCanvasMeasurement(); releaseCanvases(); canvas.width = 1; canvas.height = 1 }
   })
 }
 
@@ -219,20 +251,22 @@ export function exportFileName(name: string, format: string) {
   return `${basename}.${format === 'png' ? 'png' : 'jpg'}`
 }
 
-export async function exportFiles(photos: any[], canvas: HTMLCanvasElement, settings: any, progress: (current: number, total: number, packing?: boolean) => void = () => {}, cancelled: () => boolean = () => false) {
+export async function exportFiles(photos: any[], canvas: HTMLCanvasElement, settings: any, progress: (current: number, total: number, packing?: boolean, resolutionMessage?: string) => void = () => {}, cancelled: () => boolean = () => false) {
   if (!photos.length) throw new Error('没有已处理的照片可以导出。')
   const zip = new JSZip()
   const names = new Set<string>()
   let totalBytes = 0
+  let adjustedCount = 0
   let lastImage: any
   for (let index = 0; index < photos.length; index++) {
     if (cancelled()) throw new Error('已停止文件导出。')
     progress(index, photos.length)
-    lastImage = await exportPhoto(photos[index], canvas, settings)
+    lastImage = await exportPhoto(photos[index], canvas, settings, message => progress(index, photos.length, false, message))
+    if (lastImage.autoAdjusted) adjustedCount++
     if (cancelled()) throw new Error('已停止文件导出。')
     if (photos.length === 1) {
       const path = await writeBytes(`${wx.env.USER_DATA_PATH}/yingqian-file-export.${lastImage.format}`, await readBytes(lastImage.path))
-      return { path, fileName: lastImage.name, count: 1, lastImage: { ...lastImage, path } }
+      return { path, fileName: lastImage.name, count: 1, adjustedCount, lastImage: { ...lastImage, path } }
     }
     const bytes = await readBytes(lastImage.path)
     totalBytes += bytes.length
@@ -250,7 +284,7 @@ export async function exportFiles(photos: any[], canvas: HTMLCanvasElement, sett
   })
   const fileName = `yingqian-${new Date().toISOString().slice(0, 10)}.zip`
   const path = await writeBytes(`${wx.env.USER_DATA_PATH}/yingqian-export.zip`, bytes)
-  return { path, fileName, count: photos.length, lastImage }
+  return { path, fileName, count: photos.length, adjustedCount, lastImage }
 }
 
 export function importSignature(canvas: HTMLCanvasElement, sourceType = 'album') {
