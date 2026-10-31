@@ -5,7 +5,7 @@ export default ({ env }) => ({
   run() {
     if (!new URLSearchParams(location.search).has('yingqianTest')) return
     setTimeout(async () => {
-      const report = { device: env.WXA_DEVICE_ID, revision: env.WXA_TEST_REVISION, results: [], errors: [], complete: false }
+      const report = { device: env.WXA_DEVICE_ID, platform: env.WXA_DEVICE_PLATFORM, revision: env.WXA_TEST_REVISION, results: [], errors: [], complete: false }
       let api
       let saves = 0
       let modals = 0
@@ -42,14 +42,38 @@ export default ({ env }) => ({
           check((await api.currentPage()).path === 'pages/home/index', 'Expected home route')
         })
         await run('native photo selection reads two local images', async () => {
-          api.mock('chooseMedia', { tempFiles: [{ tempFilePath: '/assets/parity-source.jpg', size: 200000 }, { tempFilePath: '/assets/sample.jpg', size: 100000 }] })
+          let picker = ''
+          const files = [{ tempFilePath: '/assets/parity-source.jpg', size: 200000 }, { tempFilePath: '/assets/sample.jpg', size: 100000 }]
+          api.mock('chooseMedia', () => { picker = 'chooseMedia'; return { tempFiles: files } })
+          api.mock('chooseImage', options => {
+            check(options.sizeType.length === 1 && options.sizeType[0] === 'original', 'Android picker must request original images')
+            picker = 'chooseImage'
+            return { tempFilePaths: files.map(file => file.tempFilePath), tempFiles: files.map(file => ({ path: file.tempFilePath, size: file.size })) }
+          })
           await api.callPageMethod('choosePhotos')
           await api.waitForPage('pages/editor/index')
           const data = await preview()
           check(data.photos.length === 2, 'Expected two imported photos')
           check(data.templateId === 'noProcess', 'Imported photos must start unprocessed')
+          check(data.fields.find(field => field.key === 'Make').value === 'NIKON', 'Imported camera brand is missing before manual edits')
+          check(data.fields.find(field => field.key === 'Model').value === 'NIKON Zf', 'Imported camera model is missing before manual edits')
+          check(!data.metadataWarning, 'Valid camera EXIF was reported as missing')
+          check(picker === (env.WXA_DEVICE_PLATFORM === 'android' ? 'chooseImage' : 'chooseMedia'), 'Photo picker did not match the device platform')
           await api.callPageMethod('changeSetting', event('maxSide', 0))
           await api.callPageMethod('changeSetting', event('format', 0))
+        })
+        await run('missing camera information is explicit and file properties are separated from embedded metadata', async () => {
+          await api.callPageMethod('selectPhoto', { currentTarget: { dataset: { index: 1 } } })
+          let data = await preview()
+          check(data.metadataWarning.includes('未读到相机'), 'Missing camera information was silently ignored')
+          await api.callPageMethod('toggleRaw')
+          await api.waitForPage('pages/metadata/index')
+          data = await until(async () => { const data = await api.pageData(); if (data.error) throw new Error(data.error); return !data.loading ? data : null }, 'metadata classification')
+          check(data.embeddedCount === 0 && data.fileInfoCount === 5, 'File dimensions were mistaken for embedded camera metadata')
+          await api.navigateBack()
+          await api.waitForPage('pages/editor/index')
+          await api.callPageMethod('selectPhoto', { currentTarget: { dataset: { index: 0 } } })
+          await preview()
         })
         await run('manual EXIF values and visibility update the preview', async () => {
           await api.callPageMethod('changeExif', event('Make', 'NIKON'))
@@ -273,6 +297,39 @@ export default ({ env }) => ({
           check(!data.error && data.lastFileExport.adjustedCount === 1 && data.lastFileExport.count === 1, 'Automatic file export failed')
           check(data.notice.includes('最高分辨率') && !data.sizeLabels.includes('原始尺寸'), 'Export result and size choices are inconsistent')
           await api.callPageMethod('selectTab', { currentTarget: { dataset: { id: 'export' } } })
+        })
+        await run('Fujifilm camera originals are detected before any manual parameter changes', async () => {
+          const file = { tempFilePath: '/assets/fujifilm-source.jpg', size: 240000 }
+          api.mock('chooseMedia', { tempFiles: [file] })
+          api.mock('chooseImage', { tempFilePaths: [file.tempFilePath], tempFiles: [{ path: file.tempFilePath, size: file.size }] })
+          await api.callPageMethod('addPhotos', { currentTarget: { dataset: {} } })
+          const index = (await api.pageData()).photos.length - 1
+          await api.callPageMethod('selectPhoto', { currentTarget: { dataset: { index } } })
+          let data = await preview()
+          check(data.fields.find(field => field.key === 'Make').value === 'FUJIFILM', 'Fujifilm original brand was not detected')
+          check(data.fields.find(field => field.key === 'Model').value === 'X-T30 III', 'Fujifilm original model was not detected')
+          check(!data.metadataWarning && data.brands.some(brand => brand.brand === 'FUJIFILM' && brand.path === '/logos/fujifilm.png'), 'Camera logo did not follow the original brand')
+          await api.callPageMethod('toggleRaw')
+          await api.waitForPage('pages/metadata/index')
+          data = await until(async () => { const data = await api.pageData(); if (data.error) throw new Error(data.error); return !data.loading ? data : null }, 'Fujifilm metadata')
+          check(data.embeddedCount > 0, 'Fujifilm camera tags were mistaken for file properties')
+          await api.callPageMethod('search', { detail: { value: 'Model' } })
+          check((await api.pageData()).rows.some(row => row.value === 'X-T30 III'), 'Full metadata lost the camera model')
+          await api.navigateBack()
+          await api.waitForPage('pages/editor/index')
+        })
+        await run('JPEG documents from chat preserve their camera metadata', async () => {
+          api.mock('chooseMessageFile', options => {
+            check(options.type === 'all', 'Original JPEG documents cannot be selected with an image-only filter')
+            return { tempFiles: [{ path: '/assets/fujifilm-source.jpg', name: 'camera-original.JPG', size: 240000, type: 'file' }] }
+          })
+          await api.callPageMethod('addPhotos', { currentTarget: { dataset: { source: 'message' } } })
+          const index = (await api.pageData()).photos.length - 1
+          await api.callPageMethod('selectPhoto', { currentTarget: { dataset: { index } } })
+          await api.callPageMethod('selectTab', { currentTarget: { dataset: { id: 'exif' } } })
+          const data = await preview()
+          check(data.photoName === 'camera-original.JPG' && !data.metadataWarning, 'Original JPEG document metadata was not retained')
+          check(data.fields.find(field => field.key === 'Make').value === 'FUJIFILM' && data.fields.find(field => field.key === 'Model').value === 'X-T30 III', 'Original document camera fields are missing')
         })
         await run('no runtime errors or unimplemented native APIs', async () => {
           report.errors = await api.errors()

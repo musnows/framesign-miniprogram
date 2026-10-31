@@ -4,7 +4,7 @@ import { createServer } from 'node:http'
 import { copyFile, cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { metadataFixture } from './metadata-fixture.mjs'
+import { metadataFixture, cameraFixture } from './metadata-fixture.mjs'
 import sharp from 'sharp'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -15,6 +15,7 @@ await mkdir(project, { recursive: true })
 await cp(path.join(root, 'miniprogram'), project, { recursive: true, filter: source => !/^project\.(?:private\.)?config\.json$/.test(path.basename(source)) })
 await copyFile(path.join(root, 'project.config.example.json'), path.join(project, 'project.config.json'))
 await writeFile(path.join(project, 'assets/parity-source.jpg'), metadataFixture(await readFile(path.join(root, 'assets/sample.jpg'))))
+await writeFile(path.join(project, 'assets/fujifilm-source.jpg'), cameraFixture(await readFile(path.join(root, 'assets/sample.jpg')), { tiffSize: 65466 }))
 await writeFile(path.join(project, 'assets/oversized-source.jpg'), metadataFixture(await sharp(path.join(root, 'assets/sample.jpg')).resize(6000, 4000).jpeg({ quality: 72 }).toBuffer()))
 const origins = new Set(config.devices.map(device => `http://127.0.0.1:${device.port}`))
 const reports = createServer(async (request, response) => {
@@ -38,10 +39,11 @@ const servers = []
 process.env.WXA_TEST_REVISION = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 for (const device of config.devices) {
   process.env.WXA_DEVICE_ID = String(device.width)
+  process.env.WXA_DEVICE_PLATFORM = device.width === 320 ? 'android' : 'ios'
   process.env.WXA_REPORT_URL = `http://127.0.0.1:${config.reporterPort}/report`
   const server = new DevServer({
     projectPath: project, host: '127.0.0.1', port: device.port, watch: false,
-    device: { screenWidth: device.width, screenHeight: device.height, statusBarHeight: device.width === 320 ? 20 : 44, safeAreaBottom: device.width === 320 ? 0 : 34 },
+    device: { screenWidth: device.width, screenHeight: device.height, statusBarHeight: device.width === 320 ? 20 : 44, safeAreaBottom: device.width === 320 ? 0 : 34, platform: process.env.WXA_DEVICE_PLATFORM, system: device.width === 320 ? 'Android 15' : 'iOS 18' },
     setup: path.join(root, 'tests/miniprogram.wxa.setup.mjs'), forwardConsole: 'all'
   })
   await server.start()
