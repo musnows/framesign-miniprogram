@@ -53,3 +53,17 @@
 .target-row { display: flex; align-items: center; gap: 14rpx; padding: 14rpx 0; font-size: 24rpx; }
 .target-row image { width: 70rpx; height: 70rpx; flex-shrink: 0; border-radius: 8rpx; }
 .target-row text { min-width: 0; word-break: break-all; }
+.device-fallback-hint { margin-top: 8rpx; font-size: 24rpx; }
+.page .device-fallback-button { width: 100%; min-width: 0; margin: 18rpx 0 0; padding: 16rpx 24rpx; font-size: 25rpx; }
+.device-tools { gap: 14rpx; }
+.device-tools .chip { padding: 9rpx 16rpx; font-size: 23rpx; }
+.device-summary { margin-top: 14rpx; color: #967127; word-break: break-word; }
+.device-overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; background: rgba(36,36,31,.36); }
+.device-sheet { width: 100%; max-height: 85vh; overflow-y: auto; box-sizing: border-box; padding: 24rpx 30rpx calc(28rpx + env(safe-area-inset-bottom)); background: #faf9f6; border-radius: 28rpx 28rpx 0 0; }
+.device-instructions { margin-top: 12rpx; }
+.device-brand-chips { margin-top: 22rpx; }
+.device-picker-field { margin-top: 24rpx; }
+.device-picker-field .picker { margin-top: 12rpx; word-break: break-word; }
+.device-model-chips { margin-top: 14rpx; }
+.device-model-chips .chip { font-size: 24rpx; }
+.page .device-brand-only { margin-top: 24rpx; }

@@ -70,7 +70,7 @@ export function devicePickerDraft(photo: any, id?: string) {
   return {
     deviceBrandId: brand?.id || '', deviceBrandIndex: Math.max(0, DEVICE_BRANDS.findIndex(item => item.id === brand?.id)),
     deviceModelOptions: modelOptions, deviceModelIndex: Math.max(0, modelOptions.findIndex(model => normalized(model.value) === normalized(currentModel))),
-    deviceCommonModels: models.slice(0, 6), devicePhoneBrandOnly: phoneBrandOnly(brand)
+    deviceCommonModels: models.slice(0, 4), devicePhoneBrandOnly: phoneBrandOnly(brand)
   }
 }
 

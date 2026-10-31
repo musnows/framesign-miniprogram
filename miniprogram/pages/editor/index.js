@@ -10,6 +10,8 @@ Page({
     photos: [], activeIndex: 0, tab: 'template', brands: [], selectionOpen: false, selectedIds: [], selectionPhotos: [],
     tabs: [{ id: 'template', name: '模板' }, { id: 'exif', name: '参数' }, { id: 'signature', name: '签名' }, { id: 'export', name: '导出' }],
     templates: core.templates.map(item => ({ id: item.id, name: item.name })),
+    deviceBrands: core.DEVICE_BRANDS, commonDeviceBrands: core.COMMON_DEVICE_BRANDS,
+    devicePickerOpen: false, deviceBrandId: '', deviceBrandIndex: 0, deviceModelOptions: [], deviceModelIndex: 0, deviceCommonModels: [], devicePhoneBrandOnly: false,
     logos: [{ name: '自动识别相机品牌', path: '' }, ...core.logos],
     dateFormats, dateIndex: 0, logoIndex: 0,
     settings: { ...core.defaultExport }, sizeLabels: ['原始尺寸'], sizeValues: [0], sizeIndex: 0, exportSizeHint: '', resolutionNotice: '',
@@ -65,11 +67,13 @@ Page({
     const photo = this.currentPhoto()
     if (!photo) return
     const config = photo.config
-    const exif = { ...photo.exif, ...photo.overrides }
+    const exif = core.photoExif(photo)
+    const deviceState = core.deviceSelectionState(photo)
     const signature = { ...core.DEFAULT_SIGNATURE, ...config.signature }
     const selected = new Set(this.data.selectedIds.map(String))
     const photoItems = this.photos.map(item => ({ id: item.id, path: item.path, name: item.name, selected: selected.has(String(item.id)) }))
     this.setData({
+      ...deviceState,
       ...this.exportSizeData(),
       photos: photoItems, selectionPhotos: photoItems, selectedIds: photoItems.filter(item => item.selected).map(item => String(item.id)),
       brands: core.brandGroups(this.photos, getApp().globalData.customLogos).map(item => ({ ...item, logoIndex: Math.max(0, this.data.logos.findIndex(logo => logo.path === item.path)) })),
@@ -77,7 +81,7 @@ Page({
       config, signature, controls: core.templateControls(photo.templateId, config), datePreview: core.formatDateTimeValue(exif.DateTimeOriginal || '2026-10-12 14:30:45', config.dateTimeFormat, config.customDateTimeFormat), options: core.template(photo.templateId).userOptions, templateId: photo.templateId,
       labels: Object.fromEntries(['imageMargin', 'watermarkScale', 'borderRadius', 'blurRadius', 'nikonZScale'].map(key => [key, Math.round(Number(config[key]) * 100)]).concat([['signatureWidth', Math.round(signature.width * 100)]])),
       templateName: core.template(photo.templateId).name,
-      fields: core.EDITABLE_EXIF_FIELDS.map((field, index) => ({ ...field, value: String(exif[field.key] || ''), showKey: displayKeys[index], visible: config[displayKeys[index]] !== false, supported: Object.prototype.hasOwnProperty.call(core.template(photo.templateId).userOptions.exifFields || {}, displayKeys[index]) })),
+      fields: core.EDITABLE_EXIF_FIELDS.map((field, index) => ({ ...field, value: String(exif[field.key] || ''), showKey: displayKeys[index], visible: config[displayKeys[index]] !== false, supported: Object.prototype.hasOwnProperty.call(core.template(photo.templateId).userOptions.exifFields || {}, displayKeys[index]) })).filter(field => field.key !== 'Model' || !deviceState.deviceModelHidden),
       rawFields: Object.entries(photo.rawExif || {}).filter(([, value]) => typeof value !== 'object' || value instanceof Date).map(([key, value]) => ({ key, value: String(value).slice(0, 1000) })),
       dateIndex: Math.max(0, dateFormats.findIndex(item => item.value === config.dateTimeFormat)),
       logoIndex: Math.max(0, this.data.logos.findIndex(item => item.path === config.customLogoUrl)),
@@ -86,6 +90,30 @@ Page({
       textPositionIndex: Math.max(0, ['bottom-center', 'top-center', 'left-bottom', 'right-bottom'].indexOf(config.textPosition)),
       markerLength: core.markerBytes(config.hiddenWatermarkText || ''), metadataWarning: photo.metadataWarning || ''
     })
+  },
+  openDevicePicker() {
+    if (this.data.exporting || this.data.importing) return
+    this.setData({ ...core.devicePickerDraft(this.currentPhoto()), devicePickerOpen: true })
+  },
+  closeDevicePicker() { this.setData({ devicePickerOpen: false }) },
+  keepDevicePicker() {},
+  chooseDeviceBrand(event) {
+    const id = event.currentTarget.dataset.id || this.data.deviceBrands[Number(event.detail.value)]?.id
+    if (!id || this.data.exporting || this.data.importing) return
+    const draft = core.devicePickerDraft(this.currentPhoto(), id)
+    this.setData(draft)
+    if (draft.devicePhoneBrandOnly) this.applyDeviceChoice('', true)
+  },
+  chooseDeviceModel(event) {
+    const model = event.currentTarget.dataset.model || this.data.deviceModelOptions[Number(event.detail.value)]?.value
+    if (model) this.applyDeviceChoice(model)
+  },
+  useDeviceBrandOnly() { this.applyDeviceChoice('', true) },
+  applyDeviceChoice(model, brandOnly = false) {
+    if (this.data.exporting || this.data.importing) return
+    if (!core.selectPhotoDevice(this.currentPhoto(), this.data.deviceBrandId, model, brandOnly)) return
+    this.setData({ devicePickerOpen: false })
+    this.refreshPhoto(); this.requestPreview()
   },
   resetConfigField(event) {
     if (this.data.exporting) return
@@ -141,7 +169,7 @@ Page({
   },
   selectPhoto(event) {
     if (this.data.exporting || this.data.importing) return
-    this.setData({ activeIndex: Number(event.currentTarget.dataset.index), preview: '', error: '' })
+    this.setData({ activeIndex: Number(event.currentTarget.dataset.index), preview: '', error: '', devicePickerOpen: false })
     this.refreshPhoto(); this.requestPreview()
   },
   selectTab(event) { this.setData({ tab: event.currentTarget.dataset.id }) },
@@ -166,7 +194,7 @@ Page({
     this.currentPhoto().overrides = core.normalizeExifOverrides({ ...this.currentPhoto().overrides, [event.currentTarget.dataset.key]: event.detail.value })
     this.refreshPhoto(); this.requestPreview()
   },
-  resetExif() { this.currentPhoto().overrides = {}; this.refreshPhoto(); this.requestPreview() },
+  resetExif() { this.currentPhoto().overrides = {}; this.currentPhoto().cameraSelection = undefined; this.refreshPhoto(); this.requestPreview() },
   toggleRaw() { wx.navigateTo({ url: '/pages/metadata/index?id=' + this.currentPhoto().id }) },
   changeDate(event) { this.currentPhoto().config.dateTimeFormat = dateFormats[Number(event.detail.value)].value; this.refreshPhoto(); this.requestPreview() },
   changeLogo(event) {
