@@ -1,11 +1,12 @@
 import { metadataRows, readFullExif, type MetadataRow } from './shared/lib/editor/fullExif'
 import { readBytes } from './platform'
+import { originalPhotoMetadata } from './photo-metadata'
 
-export async function readPhotoMetadata(photo: { path: string; name: string; width: number; height: number; type?: string }) {
-  const bytes = await readBytes(photo.path)
+export async function readPhotoMetadata(photo: { path: string; name: string; width: number; height: number; type?: string; size?: number }) {
+  const bytes = originalPhotoMetadata(photo) || await readBytes(photo.path)
   const metadata = await readFullExif(bytes as any)
   return [
-    ...metadataRows({ File: { Name: photo.name, Type: photo.type || 'unknown', Size: `${bytes.length} bytes`, Width: photo.width, Height: photo.height } }),
+    ...metadataRows({ File: { Name: photo.name, Type: photo.type || 'unknown', Size: `${photo.size || bytes.length} bytes`, Width: photo.width, Height: photo.height } }),
     ...metadataRows(metadata)
   ]
 }

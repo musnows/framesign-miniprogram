@@ -2,7 +2,7 @@ const core = require('../../lib/core')
 const { STORAGE } = require('../../brand')
 const displayKeys = ['showBrand', 'showModel', 'showLens', 'showFocalLength', 'showAperture', 'showShutter', 'showISO', 'showDateTime']
 const dateFormats = [...core.DATE_TIME_FORMAT_OPTIONS, { value: 'custom', label: '自定义格式' }]
-const clone = value => JSON.parse(JSON.stringify(value))
+const clone = core.clonePhoto
 
 Page({
   data: {

@@ -1,4 +1,4 @@
-import { readCameraMetadata } from './photo-metadata'
+import { readCameraMetadata, rememberPhotoMetadata, originalPhotoMetadata, clonePhoto } from './photo-metadata'
 import JSZip from 'jszip'
 import * as templateDefinitions from './shared/lib/templates'
 import { getTemplateDefaultConfig } from './shared/lib/templates/userOptions'
@@ -24,6 +24,7 @@ export { formatDateTimeValue, normalizeExifOverrides } from './shared/lib/editor
 export { readPhotoMetadata, metadataPage } from './metadata'
 export { photoBrand, withBrandLogos, brandGroups, applyPhotoStyle } from './photo-selection'
 export { exportSizeOptions, exportResolution, MAX_CANVAS_PIXELS, MAX_CANVAS_EDGE } from './export-resolution'
+export { clonePhoto }
 export const templates = ['noProcess', 'standard1', 'standard2', 'logoCentered', 'blurBackground', 'nikonBlur', 'folderNameParams', 'centeredWatermark', 'sidebarWatermark', 'centeredWatermark2', 'personalText'].map(key => (templateDefinitions as any)[key])
 export const logos = BUILTIN_LOGOS.map(logo => ({ ...logo, path: logo.path.replace(/\.svg$/, '.png') })).filter((logo, index, list) => list.findIndex(item => item.path === logo.path) === index)
 export const defaultExport = { maxSide: 0, format: 'jpg', preserveExif: true, photographyOnly: false }
@@ -117,7 +118,9 @@ export async function importPhotos(templateId = 'noProcess', remaining = 9, sour
       if (bytes.length > 40 * 1024 * 1024) throw new Error('照片超过 40 MB，请选择较小的图片。')
       const { rawExif, metadataWarning } = await readCameraMetadata(bytes)
       const info = await api('getImageInfo', { src: file.tempFilePath })
-      photos.push({ path: file.tempFilePath, name: file.name || file.tempFilePath.split('/').pop(), type: info.type ? 'image/' + (info.type === 'jpg' ? 'jpeg' : info.type) : '', size: bytes.length, width: info.width, height: info.height, exif: normalizeParsedExif(rawExif), rawExif, overrides: {}, templateId, config: defaults(templateId), metadataWarning })
+      const photo = { path: file.tempFilePath, name: file.name || file.tempFilePath.split('/').pop(), type: info.type ? 'image/' + (info.type === 'jpg' ? 'jpeg' : info.type) : '', size: bytes.length, width: info.width, height: info.height, exif: normalizeParsedExif(rawExif), rawExif, overrides: {}, templateId, config: defaults(templateId), metadataWarning }
+      rememberPhotoMetadata(photo, bytes)
+      photos.push(photo)
     } catch (error: any) { failures.push(error.message || error.errMsg || '图片无法读取') }
   }
   return { photos, failures }
@@ -179,7 +182,7 @@ async function canvasFile(source: HTMLCanvasElement, target: HTMLCanvasElement, 
 }
 
 export function previewPhoto(photo: any, canvas: HTMLCanvasElement) {
-  const snapshot = JSON.parse(JSON.stringify(photo))
+  const snapshot = clonePhoto(photo)
   return exclusive(async () => {
     try {
       const { canvas: output, renderMetrics } = await render(snapshot, 960)
@@ -203,7 +206,7 @@ export async function preserveMetadata(output: Uint8Array, source: Uint8Array, o
 }
 
 export function exportPhoto(photo: any, canvas: HTMLCanvasElement, settings: any = defaultExport, onResolution: (message: string) => void = () => {}) {
-  const snapshot = JSON.parse(JSON.stringify(photo))
+  const snapshot = clonePhoto(photo)
   const options = { ...defaultExport, ...settings }
   options.maxSide = [0, ...EXPORT_PRESETS].includes(Number(options.maxSide)) ? Number(options.maxSide) : 0
   options.format = options.format === 'png' ? 'png' : 'jpg'
@@ -246,7 +249,7 @@ export function exportPhoto(photo: any, canvas: HTMLCanvasElement, settings: any
       const height = output.height
       let path = await canvasFile(output, canvas, options.format)
       if (options.preserveExif && !snapshot.isDemo) {
-        const result = await preserveMetadata(await readBytes(path), await readBytes(snapshot.path), options, width, height)
+        const result = await preserveMetadata(await readBytes(path), originalPhotoMetadata(snapshot) || await readBytes(snapshot.path), options, width, height)
         path = await writeBytes(`${wx.env.USER_DATA_PATH}/yingqian-export.${options.format}`, result)
       }
       return { path, width, height, format: options.format, name: exportFileName(snapshot.name, options.format), sourceId: snapshot.id, autoAdjusted, renderMetrics: rendered.renderMetrics }

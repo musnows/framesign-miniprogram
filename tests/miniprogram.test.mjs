@@ -280,6 +280,38 @@ test('missing camera metadata remains visible and file properties are not counte
   assert.equal(metadataPage.data.metadataWarning, photo.metadataWarning)
 })
 
+test('imported metadata survives later changes to temporary JPEGs and export snapshots', async () => {
+  const pixels = await readFile(sample)
+  for (const [make, model] of [['NIKON', 'NIKON Zf'], ['FUJIFILM', 'X-T30 III']]) {
+    const file = path.join(artifacts, `temporary-${make}.jpg`)
+    const original = cameraFixture(pixels, { make, model, tiffSize: 65466 })
+    await writeFile(file, original)
+    chosen = [{ tempFilePath: file }]
+    const photo = (await core.importPhotos()).photos[0]
+    await writeFile(file, pixels)
+    assert.equal((await exifr.parse(await readFile(file)))?.Model, undefined)
+    const snapshot = core.clonePhoto(core.withBrandLogos(photo))
+    const rows = await core.readPhotoMetadata(snapshot)
+    assert.ok(rows.some(row => row.key === 'ifd0.Model' && row.value === model))
+    assert.ok(rows.some(row => row.key === 'File.Size' && row.value === `${original.length} bytes`))
+    for (const format of ['jpg', 'png']) {
+      const result = await core.exportPhoto(snapshot, target, { format, maxSide: 1280, preserveExif: true })
+      const exported = await exifr.parse(await readFile(result.path))
+      assert.equal(exported.Make, make)
+      assert.equal(exported.Model, model)
+    }
+    const { page } = await pageHarness()
+    page.photos[0] = { ...photo, id: 1 }
+    page.refreshPhoto()
+    await page.exportFile({ currentTarget: { dataset: {} } })
+    assert.equal(page.data.error, '')
+    const exported = await exifr.parse(await readFile(page.data.lastFileExport.path))
+    assert.equal(exported.Make, make)
+    assert.equal(exported.Model, model)
+    page.onUnload()
+  }
+})
+
 function pageHarness(overrides = {}) {
   let page
   const app = { globalData: { photos: [core.createDemo(1), core.createDemo(2)], nextPhotoId: 3 } }
