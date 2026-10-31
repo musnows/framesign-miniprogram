@@ -1,7 +1,10 @@
+import { androidDeviceFixture } from './device-fixture.mjs'
+
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 const event = (key, value, extra = {}) => ({ currentTarget: { dataset: { key, ...extra } }, detail: { value } })
 
 export default ({ env }) => ({
+  mock: env.WXA_DEVICE_PLATFORM === 'android' ? { getSystemInfo: androidDeviceFixture(Number(env.WXA_DEVICE_ID), 568) } : {},
   run() {
     if (!new URLSearchParams(location.search).has('yingqianTest')) return
     setTimeout(async () => {
