@@ -2,7 +2,7 @@
 .color-picker { margin-top: 14rpx; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; }
 .mono { font-family: "SFMono-Regular", Menlo, Consolas, monospace; }
 .color-summary { display: flex; align-items: stretch; gap: 14rpx; }
-.color-picker .color-value { flex: 1; width: 0; min-width: 0; height: 76rpx; min-height: 76rpx; box-sizing: border-box; margin: 0; padding: 16rpx 20rpx; background: #f7f6f2; border-radius: 14rpx; font-size: 25rpx; color: #24241f; }
+.color-picker .color-value { flex: 1; width: 0; min-width: 0; height: 76rpx; min-height: 76rpx; box-sizing: border-box; margin: 0; padding: 0 20rpx; background: #f7f6f2; border-radius: 14rpx; font-size: 25rpx; color: #24241f; }
 .color-picker .color-toggle { display: flex; align-items: center; justify-content: center; gap: 10rpx; width: auto; min-width: 130rpx; height: 76rpx; margin: 0; padding: 12rpx 16rpx; box-sizing: border-box; border: 1rpx solid #e5e1d8; border-radius: 14rpx; background: #fff; color: #77766c; font-size: 21rpx; line-height: 1.4; }
 .color-toggle::after, .preset-swatch::after { border: 0; }
 .color-swatch { position: relative; width: 42rpx; height: 42rpx; flex-shrink: 0; overflow: hidden; border: 1rpx solid #dedbd2; border-radius: 9rpx; background-color: #fff; background-image: linear-gradient(45deg, #e5e1d8 25%, transparent 25%, transparent 75%, #e5e1d8 75%), linear-gradient(45deg, #e5e1d8 25%, transparent 25%, transparent 75%, #e5e1d8 75%); background-size: 16rpx 16rpx; background-position: 0 0, 8rpx 8rpx; }
@@ -12,7 +12,7 @@
 .color-channel { display: flex; align-items: center; gap: 14rpx; margin-top: 16rpx; }
 .channel-label { width: 24rpx; flex-shrink: 0; font-size: 24rpx; }
 .color-picker .channel-slider { flex: 1; min-width: 0; margin: 14rpx 0; }
-.color-picker .channel-number { width: 82rpx; min-width: 0; height: 58rpx; min-height: 58rpx; flex-shrink: 0; box-sizing: border-box; margin: 0; padding: 8rpx; border: 1rpx solid #e5e1d8; border-radius: 10rpx; background: #fff; color: #24241f; text-align: center; font-size: 24rpx; }
+.color-picker .channel-number { width: 82rpx; min-width: 0; height: 58rpx; min-height: 58rpx; flex-shrink: 0; box-sizing: border-box; margin: 0; padding: 0 8rpx; border: 1rpx solid #e5e1d8; border-radius: 10rpx; background: #fff; color: #24241f; text-align: center; font-size: 24rpx; }
 .color-swatches { display: flex; flex-wrap: wrap; gap: 14rpx; margin-top: 22rpx; }
 .color-picker .preset-swatch { width: 58rpx; min-width: 0; height: 58rpx; margin: 0; padding: 0; box-sizing: border-box; border: 1rpx solid #dedbd2; border-radius: 12rpx; }
 .color-error { margin-top: 10rpx; font-size: 22rpx; line-height: 1.5; color: #a74b32; }
