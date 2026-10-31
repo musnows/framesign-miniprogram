@@ -19,6 +19,11 @@
 .settings-panel { border-radius: 22rpx; }
 .section-label { font-size: 28rpx; font-weight: 650; }
 .template-chips { margin-top: 22rpx; }
+.template-actions { margin-top: 24rpx; }
+.template-actions .hint { margin-top: 12rpx; }
+.page .panel-button { width: 100%; min-width: 0; margin: 0; padding: 20rpx 24rpx; font-size: 25rpx; }
+.template-actions .panel-button[disabled] { background: #f5eedc; color: #9a8861; opacity: 1; }
+.parameter-actions { display: flex; flex-direction: column; gap: 18rpx; margin-top: 26rpx; }
 .apply-all { margin-top: 26rpx; font-size: 25rpx; }
 .feedback { margin-top: 18rpx; }
 .editor-footer { text-align: center; margin: 28rpx 0; }
@@ -41,6 +46,8 @@
 .numeric { max-width: 160rpx; }
 
 .brand-row { padding: 22rpx 0; border-bottom: 1rpx solid #e9e5dc; }
+.brand-logo-picker { display: block; margin-top: 18rpx; }
+.brand-actions { gap: 18rpx; margin-top: 18rpx; }
 .brand-preview { width: 110rpx; height: 70rpx; flex-shrink: 0; }
 .brand-title { flex: 1; min-width: 0; word-break: break-all; font-size: 25rpx; }
 .target-row { display: flex; align-items: center; gap: 14rpx; padding: 14rpx 0; font-size: 24rpx; }
