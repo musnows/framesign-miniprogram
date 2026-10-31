@@ -27,7 +27,7 @@ export class CanvasSizeLimitError extends Error {
 }
 
 export function resolutionKey(photo: any) {
-  return JSON.stringify([photo.path, photo.templateId, photo.config, photo.exif, photo.overrides])
+  return JSON.stringify([photo.path, photo.templateId, photo.config, photo.exif, photo.overrides, photo.cameraSelection])
 }
 
 export function matchingMetrics(photo: any): RenderMetrics | undefined {

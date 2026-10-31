@@ -1,7 +1,8 @@
 import { buildCustomLogoConfig } from './shared/utils/customLogos'
 import { getLogoPath } from './shared/utils/logoMapper'
+import { photoExif } from './camera-presets'
 
-export function photoBrand(photo: any): string { return String(({ ...photo.exif, ...photo.overrides }).Make || '').trim() }
+export function photoBrand(photo: any): string { return String(photoExif(photo).Make || '').trim() }
 
 export function withBrandLogos(photo: any, logos: Map<string, string> = new Map()) {
   return { ...photo, config: { ...photo.config, ...buildCustomLogoConfig(photoBrand(photo), logos) } }

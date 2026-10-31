@@ -297,6 +297,75 @@ test('lens metadata never substitutes for a missing camera brand or model', asyn
   assert.match(photo.metadataWarning, /未读到相机品牌、型号/)
 })
 
+test('camera presets fill missing device details and select the matching logo without changing source EXIF', () => {
+  const photo = core.createDemo(201)
+  photo.exif = { LensMake: 'VILTROX', LensModel: 'AF 56/1.7 XF' }
+  photo.overrides = { ISO: 'ISO 800' }
+  assert.equal(core.deviceSelectionState(photo).needsDeviceSelection, true)
+  assert.equal(core.selectPhotoDevice(photo, 'fujifilm', 'X-T30 III'), true)
+  assert.equal(core.photoExif(photo).Make, 'FUJIFILM')
+  assert.equal(core.photoExif(photo).Model, 'X-T30 III')
+  assert.equal(core.photoExif(photo).LensModel, 'AF 56/1.7 XF')
+  assert.equal(core.photoExif(photo).ISO, 'ISO 800')
+  assert.equal(photo.exif.Make, undefined)
+  assert.equal(photo.exif.Model, undefined)
+  assert.equal(core.brandGroups([photo])[0].path, '/logos/fujifilm.png')
+  assert.equal(core.deviceSelectionState(photo).needsDeviceSelection, false)
+  assert.equal(core.selectPhotoDevice(photo, 'nikon', 'not a real model'), false)
+  assert.equal(core.photoExif(photo).Make, 'FUJIFILM')
+})
+
+test('only Apple phones offer model presets and other phones suppress stale camera models', () => {
+  for (const brand of core.DEVICE_CATALOG.filter(brand => brand.kind === 'phone')) {
+    const photo = core.createDemo(202)
+    if (brand.id === 'apple') {
+      assert.ok(brand.models.includes('iPhone 17 Pro'))
+      assert.equal(core.selectPhotoDevice(photo, brand.id, 'iPhone 17 Pro'), true)
+      assert.equal(core.photoExif(photo).Model, 'iPhone 17 Pro')
+      assert.equal(core.deviceSelectionState(photo).deviceModelHidden, false)
+    } else {
+      assert.equal(brand.models.length, 0)
+      assert.equal(core.selectPhotoDevice(photo, brand.id, 'OLD DEVICE MODEL'), true)
+      assert.equal(core.photoExif(photo).Make, brand.make)
+      assert.equal(core.photoExif(photo).Model, '')
+      assert.equal(core.deviceSelectionState(photo).deviceModelHidden, true)
+    }
+    assert.equal(core.deviceSelectionState(photo).needsDeviceSelection, false)
+    assert.equal(photo.exif.Model, 'NIKON Z 6_2')
+  }
+})
+
+test('camera choices retain original unlisted models and remain specific to each photo when applying styles', () => {
+  const photo = core.createDemo(203)
+  photo.exif.Model = 'NIKON SPECIAL MODEL'
+  const draft = core.devicePickerDraft(photo)
+  assert.equal(draft.deviceBrandId, 'nikon')
+  assert.ok(draft.deviceModelOptions.some(model => model.value === 'NIKON SPECIAL MODEL'))
+  assert.equal(core.selectPhotoDevice(photo, 'nikon', 'NIKON SPECIAL MODEL'), true)
+  const other = core.createDemo(204)
+  core.selectPhotoDevice(other, 'vivo')
+  core.applyPhotoStyle([photo, other], photo, [203, 204])
+  assert.equal(core.photoExif(other).Make, 'vivo')
+  assert.equal(core.photoExif(other).Model, '')
+  assert.equal(core.photoExif(photo).Model, 'NIKON SPECIAL MODEL')
+  core.selectPhotoDevice(photo, 'canon', '', true)
+  assert.equal(core.photoExif(photo).Make, 'Canon')
+  assert.equal(core.photoExif(photo).Model, '')
+  assert.equal(core.deviceSelectionState(photo).needsDeviceSelection, false)
+})
+
+test('preset camera details reach the rendered watermark and invalidate its previous layout measurement', async () => {
+  const photo = core.createDemo(205)
+  photo.exif = {}
+  const before = await core.previewPhoto(photo, target)
+  const originalBytes = await readFile(before.path)
+  core.selectPhotoDevice(photo, 'fujifilm', 'X-T30 III')
+  const after = await core.previewPhoto(photo, target)
+  assert.notEqual(before.renderMetrics.key, after.renderMetrics.key)
+  assert.notDeepEqual(await readFile(after.path), originalBytes)
+  assert.equal(core.photoBrand(photo), 'FUJIFILM')
+})
+
 test('imported metadata survives later changes to temporary JPEGs and export snapshots', async () => {
   const pixels = await readFile(sample)
   for (const [make, model] of [['NIKON', 'NIKON Zf'], ['FUJIFILM', 'X-T30 III']]) {

@@ -11,6 +11,7 @@ import { preserveExportExif, extractExif, normalizeExif } from './shared/lib/edi
 import { filterPhotographyExif } from './shared/lib/editor/photographyExif'
 import { BUILTIN_LOGOS } from './shared/lib/editor/builtinLogos'
 import { configurationControls } from './editor-config'
+import { photoExif } from './camera-presets'
 import { Blob, TextEncoder, insertPngExif } from './binary'
 import { api, readBytes, writeBytes, installPlatform, releaseCanvases, fitDimensions, startCanvasMeasurement, stopCanvasMeasurement } from './platform'
 import { canvasScale, CanvasSizeLimitError, exportResolution, matchingMetrics, resolutionKey, MAX_CANVAS_PIXELS, EXPORT_PRESETS } from './export-resolution'
@@ -25,6 +26,7 @@ export { readPhotoMetadata, metadataPage } from './metadata'
 export { photoBrand, withBrandLogos, brandGroups, applyPhotoStyle } from './photo-selection'
 export { exportSizeOptions, exportResolution, MAX_CANVAS_PIXELS, MAX_CANVAS_EDGE } from './export-resolution'
 export { clonePhoto }
+export { DEVICE_CATALOG, DEVICE_BRANDS, COMMON_DEVICE_BRANDS, photoExif, deviceSelectionState, devicePickerDraft, selectPhotoDevice } from './camera-presets'
 export const templates = ['noProcess', 'standard1', 'standard2', 'logoCentered', 'blurBackground', 'nikonBlur', 'folderNameParams', 'centeredWatermark', 'sidebarWatermark', 'centeredWatermark2', 'personalText'].map(key => (templateDefinitions as any)[key])
 export const logos = BUILTIN_LOGOS.map(logo => ({ ...logo, path: logo.path.replace(/\.svg$/, '.png') })).filter((logo, index, list) => list.findIndex(item => item.path === logo.path) === index)
 export const defaultExport = { maxSide: 0, format: 'jpg', preserveExif: true, photographyOnly: false }
@@ -141,7 +143,7 @@ async function render(photo: any, maxSide: number, hidden = false, outputMaxSide
   const source = createCanvas(dimensions.width, dimensions.height)
   source.getContext('2d')!.drawImage(image, 0, 0, source.width, source.height)
   const steps = stepsFor(photo, source.width, source.height)
-  const context: any = { sourceCanvas: source, buffer: [source], exif: { ...photo.exif, ...photo.overrides }, config }
+  const context: any = { sourceCanvas: source, buffer: [source], exif: photoExif(photo), config }
   const lightText = steps.length === 0 || steps.some((step: any) => step.auto_params || step.processor_name === 'personal_text_overlay')
   context.signature = await prepareSignature(config, config.backgroundColor, lightText, getDefaultSignatureAnchor(steps))
   startCanvasMeasurement(source.width, source.height)
