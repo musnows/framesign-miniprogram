@@ -81,6 +81,7 @@ export default ({ env }) => ({
           check((await api.pageData()).config.shadowRadius === 0.015, 'Template reset lost its default')
         })
         await run('RGB and alpha colors update previews, apply to all photos and reset', async () => {
+          await api.callPageMethod('selectTemplate', { currentTarget: { dataset: { id: 'standard2' } } })
           await api.callPageMethod('changeConfig', event('textColor', '#7B2D8D'))
           await api.callPageMethod('changeConfig', event('shadowColor', 'rgba(24, 80, 160, 0.25)'))
           let data = await preview()
@@ -96,6 +97,8 @@ export default ({ env }) => ({
           await api.callPageMethod('resetConfigField', { currentTarget: { dataset: { key: 'shadowColor' } } })
           data = await preview()
           check(data.config.textColor !== '#7B2D8D' && data.config.shadowColor !== 'rgba(24, 80, 160, 0.25)', 'Color reset did not restore template defaults')
+          await api.callPageMethod('selectTemplate', { currentTarget: { dataset: { id: 'blurBackground' } } })
+          await preview()
         })
         await run('selected application preserves other photos and supports later additions', async () => {
           api.mock('chooseMessageFile', { tempFiles: [{ path: '/assets/sample.jpg', name: 'extra-original.jpg', size: 100000 }] })
