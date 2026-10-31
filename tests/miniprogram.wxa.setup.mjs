@@ -12,6 +12,8 @@ export default ({ env }) => ({
       let api
       let saves = 0
       let modals = 0
+      let repositoryDialog
+      let copiedRepository = ''
       const sharedFiles = []
       const check = (condition, message) => { if (!condition) throw new Error(message) }
       const until = async (predicate, label, timeout = 30000) => {
@@ -37,13 +39,24 @@ export default ({ env }) => ({
         api = await until(() => window.__wxa_test_api__, 'test API')
         await api.ready
         api.mock('saveImageToPhotosAlbum', () => { saves++; return {} })
-        api.mock('showModal', () => { modals++; return { confirm: true, cancel: false } })
+        api.mock('showModal', options => { modals++; if (options.title === 'GitHub 项目') repositoryDialog = options; return { confirm: true, cancel: false } })
+        api.mock('setClipboardData', options => { copiedRepository = options.data; return {} })
         api.mock('shareFileMessage', args => { sharedFiles.push(args); return {} })
+        const verifyRepository = async () => {
+          repositoryDialog = null
+          copiedRepository = ''
+          await api.callPageMethod('openProjectRepository')
+          await until(() => repositoryDialog && copiedRepository, 'project repository link')
+          check(repositoryDialog.confirmText === '复制链接', 'Repository dialog is missing the copy action')
+          check(repositoryDialog.content.includes('https://github.com/musnows/framesign-miniprogram'), 'Repository dialog shows the wrong project')
+          check(copiedRepository === 'https://github.com/musnows/framesign-miniprogram', 'Copied repository address is incorrect')
+        }
         await run('home loads with all eleven templates', async () => {
           const data = await api.pageData()
           check(data.templates.length === 11, 'Expected eleven home templates')
           check((await api.currentPage()).path === 'pages/home/index', 'Expected home route')
         })
+        await run('home footer opens and copies the GitHub repository', verifyRepository)
         await run('native photo selection reads two local images', async () => {
           let picker = ''
           const files = [{ tempFilePath: '/assets/parity-source.jpg', size: 200000 }, { tempFilePath: '/assets/sample.jpg', size: 100000 }]
@@ -65,6 +78,7 @@ export default ({ env }) => ({
           await api.callPageMethod('changeSetting', event('maxSide', 0))
           await api.callPageMethod('changeSetting', event('format', 0))
         })
+        await run('editor footer opens and copies the GitHub repository', verifyRepository)
         await run('missing camera information is explicit and file properties are separated from embedded metadata', async () => {
           await api.callPageMethod('selectPhoto', { currentTarget: { dataset: { index: 1 } } })
           let data = await preview()
@@ -257,6 +271,7 @@ export default ({ env }) => ({
           await api.callPageMethod('retry')
           check((await api.pageData()).result?.marker === '映签 本地测试 42', 'Detector retry failed')
         })
+        await run('detector footer opens and copies the GitHub repository', verifyRepository)
         await run('oversized photos hide original size and select the supported maximum automatically', async () => {
           await api.navigateBack()
           await api.waitForPage('pages/editor/index')

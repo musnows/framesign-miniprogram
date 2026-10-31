@@ -1,7 +1,9 @@
 const core = require('../../lib/core')
+const { openProjectRepository } = require('../../brand')
 
 Page({
   data: { appVersion: core.APP_VERSION, path: '', busy: false, checked: false, result: null, error: '', dimensions: '', confidence: '', blockCount: 0 },
+  openProjectRepository,
   onLoad(options) {
     this.unloaded = false
     this.detectionVersion = 0

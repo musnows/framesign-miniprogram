@@ -1,5 +1,5 @@
 const core = require('../../lib/core')
-const { STORAGE } = require('../../brand')
+const { STORAGE, openProjectRepository } = require('../../brand')
 const displayKeys = ['showBrand', 'showModel', 'showLens', 'showFocalLength', 'showAperture', 'showShutter', 'showISO', 'showDateTime']
 const dateFormats = [...core.DATE_TIME_FORMAT_OPTIONS, { value: 'custom', label: '自定义格式' }]
 const clone = core.clonePhoto
@@ -23,6 +23,7 @@ Page({
     preview: '', previewWidth: 0, previewHeight: 0, rendering: false, importing: false, exporting: false,
     error: '', notice: '', progress: '', savedCount: 0, needsPermission: false, markerLength: 0
   },
+  openProjectRepository,
   onLoad() {
     const app = getApp().globalData
     this.photos = app.photos

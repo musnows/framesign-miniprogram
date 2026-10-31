@@ -1,4 +1,5 @@
 const core = require('../../lib/core')
+const { openProjectRepository } = require('../../brand')
 
 Page({
   data: {
@@ -8,6 +9,7 @@ Page({
     photoCount: 0,
     error: ''
   },
+  openProjectRepository,
   onShow() { this.setData({ photoCount: getApp().globalData.photos.length }) },
   async choosePhotos(event) {
     if (this.data.busy) return

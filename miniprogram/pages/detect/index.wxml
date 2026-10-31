@@ -14,5 +14,5 @@
     <block wx:else><view class="title">未检测到可恢复的标识</view><view class="hint">照片可能未写入隐藏水印，或经过压缩、缩放等处理。本结果不能作为作品归属的证明。</view></block>
   </view>
   <view class="notice section">检测过程完全在本地进行。图片越大，检测耗时越长，请保持页面打开。</view>
-  <view class="footer"><view>映签 · <text class="mono">v{{appVersion}}</text></view><view class="footer-caption">照片无需上传</view></view>
+  <view class="footer"><button id="project-repository" class="footer-version" aria-label="查看 GitHub 项目" bindtap="openProjectRepository">映签 · <text class="mono">v{{appVersion}}</text></button><view class="footer-caption">照片无需上传</view></view>
 </view>

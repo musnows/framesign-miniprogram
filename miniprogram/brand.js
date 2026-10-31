@@ -1,5 +1,6 @@
 const STORAGE = { preferences: 'yingqian-preferences-v1', signature: 'yingqian-signature-v1' }
 const LEGACY_STORAGE = { preferences: 'photix-preferences-v1', signature: 'photix-signature-v1' }
+const PROJECT_REPOSITORY_URL = 'https://github.com/musnows/framesign-miniprogram'
 
 function readStoredSetting(name) {
   const value = wx.getStorageSync(STORAGE[name])
@@ -16,4 +17,20 @@ function isManagedSignature(filePath) {
   return typeof filePath === 'string' && filePath.startsWith(directory) && /^(yingqian|photix)-signature-\d+-\d+\.png$/.test(filePath.slice(directory.length))
 }
 
-module.exports = { STORAGE, readStoredSetting, isManagedSignature }
+function openProjectRepository() {
+  wx.showModal({
+    title: 'GitHub 项目',
+    content: PROJECT_REPOSITORY_URL + '\n\n复制链接后，在浏览器中打开。',
+    confirmText: '复制链接',
+    confirmColor: '#98680c',
+    success(result) {
+      if (!result.confirm) return
+      wx.setClipboardData({
+        data: PROJECT_REPOSITORY_URL,
+        fail() { wx.showToast({ title: '复制失败，请重试', icon: 'none' }) }
+      })
+    }
+  })
+}
+
+module.exports = { STORAGE, readStoredSetting, isManagedSignature, PROJECT_REPOSITORY_URL, openProjectRepository }

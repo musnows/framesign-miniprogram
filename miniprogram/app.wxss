@@ -43,5 +43,6 @@ button:active { opacity: .76; }
 .page .chip { display: inline-flex; align-items: center; justify-content: center; }
 .canvas-export { position: fixed; left: -10000px; top: 0; width: 1px; height: 1px; pointer-events: none; }
 .footer { text-align: center; margin-top: 48rpx; color: #aaa79e; font-size: 21rpx; }
+.footer-version { display: inline-block; width: auto; margin: 0 auto; padding: 8rpx 12rpx; background: transparent; color: inherit; font-size: inherit; line-height: inherit; border-radius: 8rpx; }
 .footer-caption { margin-top: 8rpx; }
 @media (min-width: 600px) { .page { max-width: 820px; padding-left: 40px; padding-right: 40px; } }
