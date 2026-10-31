@@ -1,7 +1,7 @@
 const core = require('../../lib/core')
 
 Page({
-  data: { loading: true, error: '', query: '', rows: [], total: 0, matching: 0, page: 0, pages: 1, name: '' },
+  data: { loading: true, error: '', query: '', rows: [], total: 0, matching: 0, page: 0, pages: 1, name: '', embeddedCount: 0, fileInfoCount: 0, metadataWarning: '' },
   onLoad(options) {
     this.photo = getApp().globalData.photos.find(photo => String(photo.id) === options.id)
     this.unloaded = false
@@ -13,7 +13,8 @@ Page({
     this.setData({ loading: true, error: '', name: this.photo.name })
     try {
       this.rows = await core.readPhotoMetadata(this.photo)
-      if (!this.unloaded) this.setData({ ...core.metadataPage(this.rows, this.data.query), loading: false })
+      const embeddedCount = this.rows.filter(row => !row.key.startsWith('File.')).length
+      if (!this.unloaded) this.setData({ ...core.metadataPage(this.rows, this.data.query), embeddedCount, fileInfoCount: this.rows.length - embeddedCount, metadataWarning: this.photo.metadataWarning || '', loading: false })
     } catch (error) { if (!this.unloaded) this.setData({ loading: false, error: '读取完整元数据失败：' + (error.message || '请重试') }) }
   },
   search(event) {

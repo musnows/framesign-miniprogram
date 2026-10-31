@@ -239,6 +239,47 @@ test('chat photograph picking includes JPEG documents and keeps their original c
   assert.equal(result.photos[0].exif.Model, 'X-T30 III')
 })
 
+test('camera import recovers missing XMP fields without overwriting valid TIFF camera tags', async () => {
+  const payload = Buffer.from('http://ns.adobe.com/xap/1.0/\0<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:tiff="http://ns.adobe.com/tiff/1.0/" tiff:Make="FUJIFILM" tiff:Model="X-T30 III" /></rdf:RDF></x:xmpmeta>')
+  const header = Buffer.from([0xff, 0xe1, 0, 0])
+  header.writeUInt16BE(payload.length + 2, 2)
+  const original = await readFile(sample)
+  const xmp = Buffer.concat([original.subarray(0, 2), header, payload, original.subarray(2)])
+  for (const [name, bytes, make] of [
+    ['xmp-camera.jpg', xmp, 'FUJIFILM'],
+    ['mixed-camera.jpg', cameraFixture(xmp, { make: 'NIKON CORPORATION', model: '' }), 'NIKON']
+  ]) {
+    const file = path.join(artifacts, name)
+    await writeFile(file, bytes)
+    chosen = [{ path: file }]
+    const { photos } = await core.importPhotos()
+    assert.equal(photos[0].exif.Make, make)
+    assert.equal(photos[0].exif.Model, 'X-T30 III')
+    assert.equal(photos[0].metadataWarning, '')
+  }
+})
+
+test('missing camera metadata remains visible and file properties are not counted as embedded tags', async () => {
+  chosen = [{ tempFilePath: sample }]
+  const { photos } = await core.importPhotos()
+  const photo = photos[0]
+  assert.match(photo.metadataWarning, /未读到相机品牌、型号/)
+  assert.match(photo.metadataWarning, /JPG 原文件/)
+  const { page } = await pageHarness()
+  Object.assign(page.currentPhoto(), photo)
+  page.refreshPhoto()
+  assert.equal(page.data.metadataWarning, photo.metadataWarning)
+  page.onUnload()
+  let metadataPage
+  runInNewContext(await readFile(path.join(root, 'miniprogram/pages/metadata/index.js'), 'utf8'), { Page(value) { metadataPage = value }, require: () => core })
+  metadataPage.setData = patch => Object.assign(metadataPage.data, structuredClone(patch))
+  metadataPage.photo = photo
+  await metadataPage.load()
+  assert.equal(metadataPage.data.embeddedCount, 0)
+  assert.equal(metadataPage.data.fileInfoCount, 5)
+  assert.equal(metadataPage.data.metadataWarning, photo.metadataWarning)
+})
+
 function pageHarness(overrides = {}) {
   let page
   const app = { globalData: { photos: [core.createDemo(1), core.createDemo(2)], nextPhotoId: 3 } }

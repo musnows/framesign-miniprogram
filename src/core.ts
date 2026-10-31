@@ -1,4 +1,4 @@
-import exifr from 'exifr'
+import { readCameraMetadata } from './photo-metadata'
 import JSZip from 'jszip'
 import * as templateDefinitions from './shared/lib/templates'
 import { getTemplateDefaultConfig } from './shared/lib/templates/userOptions'
@@ -115,10 +115,7 @@ export async function importPhotos(templateId = 'noProcess', remaining = 9, sour
       if (file.size > 40 * 1024 * 1024) throw new Error('照片超过 40 MB，请选择较小的图片。')
       const bytes = await readBytes(file.tempFilePath)
       if (bytes.length > 40 * 1024 * 1024) throw new Error('照片超过 40 MB，请选择较小的图片。')
-      let rawExif = {}
-      let metadataWarning = ''
-      try { rawExif = await exifr.parse(bytes, { mergeOutput: true, translateValues: true, reviveValues: true }) || {} }
-      catch { metadataWarning = '未能读取 EXIF，可以手动补充。' }
+      const { rawExif, metadataWarning } = await readCameraMetadata(bytes)
       const info = await api('getImageInfo', { src: file.tempFilePath })
       photos.push({ path: file.tempFilePath, name: file.name || file.tempFilePath.split('/').pop(), type: info.type ? 'image/' + (info.type === 'jpg' ? 'jpeg' : info.type) : '', size: bytes.length, width: info.width, height: info.height, exif: normalizeParsedExif(rawExif), rawExif, overrides: {}, templateId, config: defaults(templateId), metadataWarning })
     } catch (error: any) { failures.push(error.message || error.errMsg || '图片无法读取') }

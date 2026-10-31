@@ -2,7 +2,10 @@
   <view class="title">完整 EXIF 与元数据</view>
   <view class="hint file-name">{{name}}</view>
   <view class="notice section">读取原始文件的 EXIF、GPS、XMP、IPTC、ICC 及厂商私有标签，不受手动水印文字修改影响。长字段分段显示，保留全部内容。</view>
+  <view wx:if="{{metadataWarning}}" class="notice section">{{metadataWarning}}</view>
   <input id="metadata-search" value="{{query}}" bindinput="search" placeholder="搜索标签或内容，如 GPS、Copyright" />
+  <view wx:if="{{!loading && !error}}" class="hint section">内嵌元数据 {{embeddedCount}} 项 · 文件信息 {{fileInfoCount}} 项</view>
+  <view wx:if="{{!loading && !error && !embeddedCount}}" class="notice section">当前只读到文件名、格式和尺寸，未读到照片内嵌的 EXIF、XMP 等标签。</view>
   <view class="hint section">{{matching}} / {{total}} 项 · 第 {{page + 1}} / {{pages}} 页</view>
   <view wx:if="{{loading}}" class="notice section">正在读取完整元数据…</view>
   <view wx:elif="{{error}}" class="error section">{{error}}<button class="secondary section" bindtap="load">重新读取</button></view>

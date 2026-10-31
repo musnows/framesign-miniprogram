@@ -9,6 +9,7 @@
   </view>
   <view class="row preview-caption"><text class="small muted">{{isDemo ? '示例照片' : '轻点查看大图'}} · <text class="mono">{{sourceSize}}</text></text><button class="link small" disabled="{{exporting}}" bindtap="removePhoto">移出</button></view>
   <view wx:if="{{error}}" id="editor-error" class="error feedback">{{error}}</view>
+  <view wx:if="{{metadataWarning}}" id="metadata-warning" class="notice feedback">{{metadataWarning}}</view>
   <view wx:if="{{resolutionNotice}}" id="resolution-notice" class="notice feedback">{{resolutionNotice}}</view>
   <view wx:if="{{notice}}" id="editor-notice" class="notice feedback">{{notice}}</view>
   <button wx:if="{{needsPermission}}" class="secondary feedback" open-type="openSetting" bindopensetting="permissionChanged">打开设置，允许保存到相册</button>
@@ -35,7 +36,6 @@
     <block wx:elif="{{tab === 'exif'}}">
       <view class="row"><text class="section-label">照片参数</text><button class="link small" bindtap="resetExif">恢复读取值</button></view>
       <view class="hint">开关控制水印显示，编辑仅改变画面上的文字。</view>
-      <view wx:if="{{metadataWarning}}" class="notice feedback">{{metadataWarning}}</view>
       <view wx:for="{{fields}}" wx:key="key" class="field"><view class="row"><text class="field-label">{{item.label}}</text><switch color="#d3a239" wx:if="{{item.supported}}" checked="{{item.visible}}" data-key="{{item.showKey}}" bindchange="changeConfig" /></view><input id="exif-{{item.key}}" value="{{item.value}}" placeholder="未读取到，可手动填写" maxlength="160" data-key="{{item.key}}" bindblur="changeExif" /></view>
       <view class="field"><text class="field-label">时间显示格式</text><picker range="{{dateFormats}}" range-key="label" value="{{dateIndex}}" bindchange="changeDate"><view class="picker">{{dateFormats[dateIndex].label}} ⌄</view></picker><input wx:if="{{config.dateTimeFormat === 'custom'}}" class="mono" value="{{config.customDateTimeFormat}}" maxlength="120" placeholder="YYYY-MM-DD HH:mm:ss" data-key="customDateTimeFormat" bindblur="changeConfig" /></view>
       <view wx:if="{{config.showDateTime}}" class="hint">时间预览：{{datePreview}}</view><button wx:if="{{config.dateTimeFormat === 'custom'}}" class="secondary apply-all" bindtap="saveDateFormat">保存此时间格式</button><view class="chips"><button wx:for="{{savedDateFormats}}" wx:key="*this" class="chip" data-format="{{item}}" bindtap="applyDateFormat">{{item}}</button></view>
