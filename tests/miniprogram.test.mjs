@@ -335,6 +335,20 @@ test('only Apple phones offer model presets and other phones suppress stale came
   }
 })
 
+test('automatically read non-Apple phone brands do not expose or render hardware model codes', () => {
+  const photo = core.createDemo(206)
+  photo.exif.Make = 'vivo'
+  photo.exif.Model = 'V2245A'
+  assert.equal(core.photoExif(photo).Make, 'vivo')
+  assert.equal(core.photoExif(photo).Model, '')
+  assert.equal(core.deviceSelectionState(photo).deviceModelHidden, true)
+  assert.equal(core.deviceSelectionState(photo).needsDeviceSelection, false)
+  assert.equal(photo.exif.Model, 'V2245A')
+  photo.exif.Make = 'Apple'
+  photo.exif.Model = 'iPhone 17 Pro'
+  assert.equal(core.photoExif(photo).Model, 'iPhone 17 Pro')
+})
+
 test('camera choices retain original unlisted models and remain specific to each photo when applying styles', () => {
   const photo = core.createDemo(203)
   photo.exif.Model = 'NIKON SPECIAL MODEL'

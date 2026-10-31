@@ -1,7 +1,7 @@
 type DeviceBrand = { id: string; label: string; make: string; kind: 'camera' | 'phone'; models: string[]; aliases: string[] }
 
 const camera = (id: string, name: string, make: string, models: string[], aliases: string[] = []): DeviceBrand => ({ id, label: `${name} · ${make}`, make, models, aliases: [name, ...aliases], kind: 'camera' })
-const phone = (id: string, name: string, make: string, models: string[] = []): DeviceBrand => ({ id, label: `${name} · ${make}`, make, models, aliases: [name], kind: 'phone' })
+const phone = (id: string, name: string, make: string, models: string[] = []): DeviceBrand => ({ id, label: `${name} · ${make}`, make, models, aliases: name === '手机' ? [] : [name], kind: 'phone' })
 
 export const DEVICE_CATALOG: DeviceBrand[] = [
   camera('nikon', '尼康', 'NIKON', ['Zf', 'Z6III', 'Z8', 'Z5II', 'Z50II', 'Zfc', 'Z9', 'Z7II', 'Z6II', 'Z5', 'Z50', 'Z30', 'Z7', 'Z6', 'D850', 'D780', 'D750', 'D810', 'D500', 'D7500', 'D7200', 'D5600', 'D3500'], ['NIKON CORPORATION']),
@@ -41,7 +41,7 @@ export function photoExif(photo: any): Record<string, any> {
   const brand = byId(photo.cameraSelection?.brandId)
   const selected = brand ? { Make: brand.make, Model: phoneBrandOnly(brand) ? '' : photo.cameraSelection.model } : {}
   const exif = { ...photo.exif, ...selected, ...photo.overrides }
-  if (brand && phoneBrandOnly(brand) && byMake(exif.Make)?.id === brand.id) exif.Model = ''
+  if (phoneBrandOnly(byMake(exif.Make))) exif.Model = ''
   return exif
 }
 
@@ -54,7 +54,7 @@ export function deviceSelectionState(photo: any) {
   return {
     needsDeviceSelection: !text(exif.Make) || (!modelOptional && !text(exif.Model)),
     hasDeviceSelection,
-    deviceModelHidden: hasDeviceSelection && phoneBrandOnly(brand),
+    deviceModelHidden: phoneBrandOnly(brand),
     deviceSelectionSummary: [brand?.label || text(exif.Make), text(exif.Model)].filter(Boolean).join(' · ')
   }
 }
