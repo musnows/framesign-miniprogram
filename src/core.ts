@@ -84,26 +84,42 @@ export function createDemo(id: number, templateId = 'standard1') {
   return { id, path: '/assets/sample.jpg', name: '山间晨光 · 示例', width: 1080, height: 720, exif: { ...demoExif }, rawExif: { ...demoExif }, overrides: {}, templateId, config: defaults(templateId), isDemo: true }
 }
 
-export async function pickImages(source = 'album', count = 9) {
-  const result = source === 'message'
-    ? await api('chooseMessageFile', { count: Math.min(100, count), type: 'image' })
-    : await api('chooseMedia', { count: Math.min(9, count), mediaType: ['image'], sourceType: ['album', 'camera'], sizeType: ['original'] })
-  return (result.tempFiles || []).map((file: any) => ({ ...file, tempFilePath: file.tempFilePath || file.path }))
+export async function pickImages(source = 'album', count = 9, photograph = false) {
+  const options = { count: Math.min(9, count), sourceType: ['album', 'camera'], sizeType: ['original'] }
+  let android = false
+  if (photograph && source !== 'message') {
+    try {
+      const device = typeof wx.getDeviceInfo === 'function' ? wx.getDeviceInfo() : typeof wx.getSystemInfoSync === 'function' ? wx.getSystemInfoSync() : {}
+      android = device.platform === 'android'
+    } catch {}
+  }
+  let result
+  if (source === 'message') result = await api('chooseMessageFile', { count: Math.min(100, count), type: photograph ? 'all' : 'image' })
+  else if (android && typeof wx.chooseImage === 'function') {
+    try { result = await api('chooseImage', options) }
+    catch (error: any) {
+      if (!/not supported|not available|not implemented|no such api/i.test(error.errMsg || error.message || '')) throw error
+      result = await api('chooseMedia', { ...options, mediaType: ['image'] })
+    }
+  } else result = await api('chooseMedia', { ...options, mediaType: ['image'] })
+  const files = result.tempFiles?.length ? result.tempFiles : (result.tempFilePaths || []).map((path: string) => ({ path }))
+  return files.map((file: any) => ({ ...file, tempFilePath: file.tempFilePath || file.path }))
 }
 
 export async function importPhotos(templateId = 'noProcess', remaining = 9, source = 'album') {
-  const selected = await pickImages(source, remaining)
+  const selected = await pickImages(source, remaining, true)
   const photos = []
   const failures = []
   for (const file of selected) {
     try {
       if (file.size > 40 * 1024 * 1024) throw new Error('照片超过 40 MB，请选择较小的图片。')
-      const info = await api('getImageInfo', { src: file.tempFilePath })
       const bytes = await readBytes(file.tempFilePath)
+      if (bytes.length > 40 * 1024 * 1024) throw new Error('照片超过 40 MB，请选择较小的图片。')
       let rawExif = {}
       let metadataWarning = ''
       try { rawExif = await exifr.parse(bytes, { mergeOutput: true, translateValues: true, reviveValues: true }) || {} }
       catch { metadataWarning = '未能读取 EXIF，可以手动补充。' }
+      const info = await api('getImageInfo', { src: file.tempFilePath })
       photos.push({ path: file.tempFilePath, name: file.name || file.tempFilePath.split('/').pop(), type: info.type ? 'image/' + (info.type === 'jpg' ? 'jpeg' : info.type) : '', size: bytes.length, width: info.width, height: info.height, exif: normalizeParsedExif(rawExif), rawExif, overrides: {}, templateId, config: defaults(templateId), metadataWarning })
     } catch (error: any) { failures.push(error.message || error.errMsg || '图片无法读取') }
   }

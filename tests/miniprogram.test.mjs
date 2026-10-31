@@ -10,7 +10,7 @@ import { build } from 'esbuild'
 import sharp from 'sharp'
 import exifr from 'exifr'
 import JSZip from 'jszip'
-import { metadataFixture } from './metadata-fixture.mjs'
+import { metadataFixture, cameraFixture } from './metadata-fixture.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const artifacts = path.join(root, '.ai-docs/miniprogram/tests')
@@ -19,6 +19,8 @@ const localPath = value => /^\/(assets|logos)\//.test(value) ? path.join(root, '
 const imageSource = Object.getOwnPropertyDescriptor(Image.prototype, 'src')
 let serial = 0
 let chosen = []
+let devicePlatform = 'android'
+let pickerCalls = []
 const failures = []
 const workerBundle = await build({ entryPoints: [path.join(root, 'src/watermark-worker.ts')], bundle: true, write: false, format: 'iife', platform: 'browser', inject: [path.join(root, 'src/binary.ts')], logLevel: 'silent' })
 const fsApi = {
@@ -54,7 +56,9 @@ const wx = {
     canvas.encode(fileType === 'jpg' ? 'jpeg' : 'png', fileType === 'jpg' ? Math.round(quality * 100) : undefined).then(bytes => writeFile(tempFilePath, bytes)).then(() => success({ tempFilePath }), fail)
   },
   chooseMedia({ success }) { success({ tempFiles: chosen }) },
-  chooseMessageFile({ success }) { success({ tempFiles: chosen }) },
+  getDeviceInfo() { return { platform: devicePlatform } },
+  chooseImage(options) { pickerCalls.push({ api: 'chooseImage', options }); options.success({ tempFiles: chosen }) },
+  chooseMessageFile(options) { pickerCalls.push({ api: 'chooseMessageFile', options }); options.success({ tempFiles: chosen }) },
   getImageInfo({ src, success, fail }) { sharp(localPath(src)).metadata().then(info => success({ width: info.width, height: info.height }), fail) }
 }
 const bundled = await build({
@@ -174,6 +178,65 @@ test('invalid files do not poison the serialized rendering queue', async () => {
   const imported = await core.importPhotos()
   assert.equal(imported.photos.length, 1)
   assert.equal(imported.failures.length, 1)
+})
+
+test('Android original-photo imports recognize Nikon and large big-endian Fujifilm EXIF before manual edits', async () => {
+  const image = await readFile(sample)
+  for (const [name, bytes, make, model] of [
+    ['nikon-import.jpg', metadataFixture(image), 'NIKON', 'NIKON Zf'],
+    ['fujifilm-import.jpg', cameraFixture(image, { tiffSize: 65466 }), 'FUJIFILM', 'X-T30 III']
+  ]) {
+    const file = path.join(artifacts, name)
+    await writeFile(file, bytes)
+    pickerCalls = []
+    chosen = [{ path: file, size: bytes.length }]
+    const result = await core.importPhotos()
+    assert.equal(result.failures.length, 0)
+    assert.equal(result.photos.length, 1)
+    assert.equal(result.photos[0].exif.Make, make)
+    assert.equal(result.photos[0].exif.Model, model)
+    assert.equal(core.brandGroups(result.photos)[0].brand, make)
+    assert.equal(pickerCalls[0].api, 'chooseImage')
+    assert.deepEqual(Array.from(pickerCalls[0].options.sizeType), ['original'])
+    const rows = await core.readPhotoMetadata(result.photos[0])
+    assert.ok(rows.some(row => row.key === 'ifd0.Model' && row.value === model))
+    assert.deepEqual(await readFile(file), bytes)
+  }
+})
+
+test('original photo picking supports path-only results, cancellation and unavailable API fallback', async () => {
+  const previous = { chooseImage: wx.chooseImage, chooseMedia: wx.chooseMedia }
+  let fallbackCalls = 0
+  try {
+    wx.chooseMedia = options => { fallbackCalls++; options.success({ tempFiles: [{ tempFilePath: sample }] }) }
+    wx.chooseImage = options => options.success({ tempFilePaths: [sample] })
+    assert.equal((await core.pickImages('album', 9, true))[0].tempFilePath, sample)
+    assert.equal(fallbackCalls, 0)
+    wx.chooseImage = options => options.fail({ errMsg: 'chooseImage:fail cancel' })
+    await assert.rejects(core.pickImages('album', 9, true))
+    assert.equal(fallbackCalls, 0)
+    wx.chooseImage = options => options.fail({ errMsg: 'chooseImage:fail not supported' })
+    assert.equal((await core.pickImages('album', 9, true))[0].tempFilePath, sample)
+    assert.equal(fallbackCalls, 1)
+    devicePlatform = 'ios'
+    await core.pickImages('album', 9, true)
+    assert.equal(fallbackCalls, 2)
+    devicePlatform = 'android'
+    await core.pickImages('album', 1)
+    assert.equal(fallbackCalls, 3)
+  } finally { Object.assign(wx, previous); devicePlatform = 'android' }
+})
+
+test('chat photograph picking includes JPEG documents and keeps their original camera data', async () => {
+  const file = path.join(artifacts, 'camera-document.jpg')
+  await writeFile(file, cameraFixture(await readFile(sample)))
+  chosen = [{ path: file, name: 'camera-original.JPG' }]
+  pickerCalls = []
+  const result = await core.importPhotos(undefined, 9, 'message')
+  assert.equal(pickerCalls[0].options.type, 'all')
+  assert.equal(result.photos[0].name, 'camera-original.JPG')
+  assert.equal(result.photos[0].exif.Make, 'FUJIFILM')
+  assert.equal(result.photos[0].exif.Model, 'X-T30 III')
 })
 
 function pageHarness(overrides = {}) {

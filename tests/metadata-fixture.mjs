@@ -51,3 +51,30 @@ export function metadataFixture(image = Buffer.from([0xff, 0xd8, 0xff, 0xd9])) {
     image.subarray(2)
   ])
 }
+
+export function cameraFixture(image, { make = 'FUJIFILM', model = 'X-T30 III', littleEndian = false, tiffSize = 512, orientation = 6 } = {}) {
+  const tiff = Buffer.alloc(tiffSize)
+  const uint16 = (value, offset) => littleEndian ? tiff.writeUInt16LE(value, offset) : tiff.writeUInt16BE(value, offset)
+  const uint32 = (value, offset) => littleEndian ? tiff.writeUInt32LE(value, offset) : tiff.writeUInt32BE(value, offset)
+  tiff.write(littleEndian ? 'II' : 'MM')
+  uint16(42, 2)
+  uint32(8, 4)
+  uint16(3, 8)
+  let valueOffset = 8 + 2 + 3 * 12 + 4
+  for (const [index, tag, text] of [[0, 0x010f, make], [1, 0x0110, model]]) {
+    const entry = 10 + index * 12
+    const value = Buffer.from(`${text}\0`)
+    uint16(tag, entry)
+    uint16(2, entry + 2)
+    uint32(value.length, entry + 4)
+    if (value.length <= 4) value.copy(tiff, entry + 8)
+    else { uint32(valueOffset, entry + 8); value.copy(tiff, valueOffset); valueOffset += value.length }
+  }
+  uint16(0x0112, 34)
+  uint16(3, 36)
+  uint32(1, 38)
+  uint16(orientation, 42)
+  const header = Buffer.from([0xff, 0xe1, 0, 0])
+  header.writeUInt16BE(tiff.length + 8, 2)
+  return Buffer.concat([image.subarray(0, 2), header, Buffer.from('Exif\0\0'), tiff, image.subarray(2)])
+}
