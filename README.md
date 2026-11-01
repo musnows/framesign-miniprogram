@@ -132,3 +132,14 @@ framesign-miniprogram/
 ## 许可证
 
 本项目采用 [MIT License](LICENSE)，完整的版权与授权条款见许可证文件。
+
+## 特别鸣谢
+
+感谢 [LINUX DO](https://linux.do) 社区的交流与支持。
+
+<p align="center">
+  <a href="https://linux.do">
+    <img src="docs/images/linuxdo.png" alt="LINUX DO" width="420" />
+  </a>
+</p>
+<p align="center"><b>学AI，上L站！祝小破站越来越好～</b></p>
