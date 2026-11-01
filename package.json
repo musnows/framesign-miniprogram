@@ -2,6 +2,7 @@
   "name": "framesign-miniprogram",
   "version": "1.0.6",
   "description": "FrameSign (映签): a local-first WeChat mini-program for photo signatures and watermarks.",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "engines": {

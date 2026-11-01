@@ -117,6 +117,7 @@ framesign-miniprogram/
 ├── scripts/                      构建、预览与测试启动脚本
 ├── tests/                        单元测试及 wxa-runner 运行检查
 ├── project.config.example.json   可公开的开发者工具配置示例
+├── LICENSE                       MIT 许可证
 └── package.json                  依赖、脚本与版本信息
 ```
 
@@ -127,3 +128,7 @@ framesign-miniprogram/
 - **小程序预览与运行测试：[open-wxa/wxa-runner](https://github.com/open-wxa/wxa-runner)**。
 
 感谢上述项目提供的基础与工具。
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE)，完整的版权与授权条款见许可证文件。
