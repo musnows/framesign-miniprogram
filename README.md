@@ -10,6 +10,16 @@
 
 本项目基于 [LeoonLiang/photix-mark-web](https://github.com/LeoonLiang/photix-mark-web) 的照片模板与图像处理实现，进行了微信小程序适配，并作为独立仓库维护。感谢原作者 [LeoonLiang](https://github.com/LeoonLiang) 及原项目贡献者。Web 和 Electron 桌面端请参阅原项目。
 
+## 扫码使用
+
+<p align="center">
+  <a href="docs/images/miniprogram-code.jpg"><img src="docs/images/miniprogram-code.jpg" width="300" alt="映签微信小程序码" /></a>
+</p>
+
+<p align="center">使用微信扫一扫，扫描小程序码即可打开映签。</p>
+
+点击小程序码可查看并保存原图。
+
 ## 模板风格预览
 
 | 经典版式 | 艺术版式 | 杂志版式 |
