@@ -8,7 +8,7 @@
 
 映签是一款在设备本地处理照片的微信小程序：为照片添加拍摄参数、相机品牌 Logo 和个人签名，选择喜欢的版式后，逐张编辑或批量导出。
 
-本项目基于 [LeoonLiang/photix-mark-web](https://github.com/LeoonLiang/photix-mark-web) 的照片模板与图像处理实现，进行了微信小程序适配，并作为独立仓库维护。感谢原作者 [LeoonLiang](https://github.com/LeoonLiang) 及原项目贡献者。Web 和 Electron 桌面端请参阅原项目。
+本小程序由 [musnows/photix-mark-web](https://github.com/musnows/photix-mark-web) 二开项目适配并拆分而来，二开的 Web 版与 Electron 桌面客户端也在该仓库维护。该项目 Fork 自原项目 [LeoonLiang/photix-mark-web](https://github.com/LeoonLiang/photix-mark-web)，感谢原作者 [LeoonLiang](https://github.com/LeoonLiang) 及原项目贡献者。
 
 ## 扫码使用
 
@@ -111,7 +111,7 @@ framesign-miniprogram/
 │   ├── pages/                    首页、编辑、检测与元数据页面
 │   └── components/               调色等小程序组件
 ├── src/                          小程序处理逻辑与平台适配
-│   └── shared/                   从原项目移植并适配的模板与图像处理代码
+│   └── shared/                   从 Web／客户端二开项目移植并适配的模板与图像处理代码
 ├── assets/                       示例照片、品牌 Logo 与产品 Logo
 ├── docs/images/                  README 宣传图片
 ├── scripts/                      构建、预览与测试启动脚本
@@ -123,7 +123,12 @@ framesign-miniprogram/
 
 ## 项目来源与致谢
 
-- **原项目：[LeoonLiang/photix-mark-web](https://github.com/LeoonLiang/photix-mark-web)**。映签小程序的模板和图像处理实现以该项目为基础，保留并适配了其中的共享逻辑。
+本项目的开发来源依次为：
+
+1. **上游原项目：[LeoonLiang/photix-mark-web](https://github.com/LeoonLiang/photix-mark-web)**，提供原始的照片模板与图像处理实现。
+2. **Web／客户端二开：[musnows/photix-mark-web](https://github.com/musnows/photix-mark-web)**。先 Fork 上游原项目，再继续二次开发；二开的 Web 版与 Electron 桌面客户端在此仓库维护。
+3. **微信小程序：[musnows/framesign-miniprogram](https://github.com/musnows/framesign-miniprogram)**。在上述 Web／客户端二开项目的基础上适配微信小程序，并拆分为当前独立仓库维护。
+
 - **原作者：[LeoonLiang](https://github.com/LeoonLiang)**，以及原项目的其他贡献者。
 - **小程序预览与运行测试：[open-wxa/wxa-runner](https://github.com/open-wxa/wxa-runner)**。
 
